@@ -23,7 +23,6 @@ public class QAClient {
 		try {
 			qaClient = TClient.creatIPAClient(QA_SERVICE_IP, QA_SERVICE_PORT);
 			QuerySpec query = new QuerySpec();
-			query.setName("test-query");
 			query.setBudget(1000);
 			String input = "what is the speed of the light?";
 			query.setInput(input.getBytes());

@@ -6,6 +6,7 @@ import edu.umich.clarity.thrift.QuerySpec;
 import edu.umich.clarity.thrift.SchedulerService;
 import edu.umich.clarity.thrift.THostPort;
 import org.apache.commons.math3.distribution.PoissonDistribution;
+import org.apache.thrift.TException;
 
 import java.io.File;
 import java.io.IOException;
@@ -62,12 +63,17 @@ public class StressClient {
                 List<Long> timestamp = new LinkedList<Long>();
                 query.setTimestamp(timestamp);
                 Random randomGen = new Random();
-                query.setInput(Files.readAllBytes(audioFiles[randomGen.nextInt(audioFiles.length)].toPath()));
+                int randIndex = randomGen.nextInt(audioFiles.length);
+                query.setInput(Files.readAllBytes(audioFiles[randIndex].toPath()));
                 Thread.sleep(Math.round(nap_time));
+                System.out.println("Sending intput file " + audioFiles[randIndex].getName());
+                stressClient.submitQuery(query);
             } catch (IOException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (TException e) {
                 e.printStackTrace();
             }
         }

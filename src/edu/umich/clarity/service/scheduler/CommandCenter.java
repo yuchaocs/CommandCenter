@@ -10,10 +10,7 @@ import org.apache.thrift.TException;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -32,10 +29,9 @@ public class CommandCenter implements SchedulerService.Iface {
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
     private static CSVWriter csvWriter = null;
-    private static final String FILE_HEADER = "asrq,asrs,immq,imms,qaq,qas";
+    private static final String[] FILE_HEADER = {"asrq", "asrs", "immq", "imms", "qaq", "qas"};
 
     public void initialize() {
-        sirius_workflow.add("gen");
         sirius_workflow.add("asr");
         sirius_workflow.add("im");
         sirius_workflow.add("qa");
@@ -44,8 +40,9 @@ public class CommandCenter implements SchedulerService.Iface {
             workflow += name + "->";
         }
         try {
-            csvWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',');
-            csvWriter.writeNext(FILE_HEADER.split(","));
+            csvWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            csvWriter.writeNext(FILE_HEADER);
+            csvWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -143,12 +140,12 @@ public class CommandCenter implements SchedulerService.Iface {
                 long serving_time = query.getTimestamp().get(i + 2)
                         - query.getTimestamp().get(i + 1);
                 total_serving += serving_time;
-                LOG.info("Query: " + query.getName() + " queuing " + queuing_time
-                        + "ms" + " serving " + serving_time + "ms" + " @stage "
+                LOG.info("Query: queuing time " + queuing_time
+                        + "ms," + " serving time " + serving_time + "ms" + " @stage "
                         + sirius_workflow.get(i / 3));
             }
 
-            LOG.info("Query: " + query.getName() + " total queuing "
+            LOG.info("Query: total queuing "
                     + total_queuing + "ms" + " total serving " + total_serving
                     + "ms" + " at all stages with total latency "
                     + (total_queuing + total_serving) + "ms");
@@ -165,18 +162,20 @@ public class CommandCenter implements SchedulerService.Iface {
             while (true) {
                 try {
                     QuerySpec query = finishedQueryQueue.take();
-                    String csvEntry = "";
+                    ArrayList<String> csvEntry = new ArrayList<String>();
                     for (int i = 0; i < query.getTimestamp().size(); i += 3) {
                         long queuing_time = query.getTimestamp().get(i + 1)
                                 - query.getTimestamp().get(i);
                         long serving_time = query.getTimestamp().get(i + 2)
                                 - query.getTimestamp().get(i + 1);
-                        csvEntry += queuing_time + "," + serving_time;
-                        if ((i + 3) < query.getTimestamp().size())
-                            csvEntry += ",";
+                        csvEntry.add("" + queuing_time);
+                        csvEntry.add("" + serving_time);
                     }
-                    csvWriter.writeNext(csvEntry.split(","));
+                    csvWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                    csvWriter.flush();
                 } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
