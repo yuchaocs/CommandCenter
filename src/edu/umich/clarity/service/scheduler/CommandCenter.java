@@ -29,7 +29,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
     private static CSVWriter csvWriter = null;
-    private static final String[] FILE_HEADER = {"asrq", "asrs", "immq", "imms", "qaq", "qas"};
+    private static final String[] FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
 
     public void initialize() {
         sirius_workflow.add("asr");
@@ -163,14 +163,20 @@ public class CommandCenter implements SchedulerService.Iface {
                 try {
                     QuerySpec query = finishedQueryQueue.take();
                     ArrayList<String> csvEntry = new ArrayList<String>();
+                    long total_queuing = 0;
+                    long total_serving = 0;
                     for (int i = 0; i < query.getTimestamp().size(); i += 3) {
                         long queuing_time = query.getTimestamp().get(i + 1)
                                 - query.getTimestamp().get(i);
+                        total_queuing += queuing_time;
                         long serving_time = query.getTimestamp().get(i + 2)
                                 - query.getTimestamp().get(i + 1);
+                        total_serving += serving_time;
                         csvEntry.add("" + queuing_time);
                         csvEntry.add("" + serving_time);
                     }
+                    csvEntry.add("" + total_queuing);
+                    csvEntry.add("" + total_serving);
                     csvWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                     csvWriter.flush();
                 } catch (InterruptedException e) {
