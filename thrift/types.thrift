@@ -18,7 +18,7 @@ struct RegMessage {
 	3: double budget;
 }
 
-struct RegReply {
-	1: list<THostPort> service_list;
-	2: bool final_stage = false;
-}
+//struct RegReply {
+//	1: list<THostPort> service_list;
+//	2: bool final_stage = false;
+//}

@@ -25,19 +25,32 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final long LATENCY_BUDGET = 300;
     // TODO may need to DAG structure to store the application workflow
     private static final List<String> sirius_workflow = new LinkedList<String>();
+    private static final String[] FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
     private static ConcurrentMap<String, Map<THostPort, Client>> serviceMap = new ConcurrentHashMap<String, Map<THostPort, Client>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
-    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
     private static CSVWriter csvWriter = null;
-    private static final String[] FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
+    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
+
+    public static void main(String[] args) throws IOException {
+        CommandCenter commandCenter = new CommandCenter();
+        SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
+                commandCenter);
+        TServers.launchSingleThreadThriftServer(SCHEDULER_PORT, processor);
+        LOG.info("starting command center at " + SCHEDULER_IP + ":"
+                + SCHEDULER_PORT);
+        commandCenter.initialize();
+    }
 
     public void initialize() {
         sirius_workflow.add("asr");
         sirius_workflow.add("im");
         sirius_workflow.add("qa");
         String workflow = "";
-        for (String name : sirius_workflow) {
-            workflow += name + "->";
+        for (int i = 0; i < sirius_workflow.size(); i++) {
+            workflow += sirius_workflow.get(i);
+            if ((i + 1) < sirius_workflow.size()) {
+                workflow += "->";
+            }
         }
         try {
             csvWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
@@ -237,15 +250,5 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
             }
         }
-    }
-
-    public static void main(String[] args) throws IOException {
-        CommandCenter commandCenter = new CommandCenter();
-        SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
-                commandCenter);
-        TServers.launchSingleThreadThriftServer(SCHEDULER_PORT, processor);
-        LOG.info("starting command center at " + SCHEDULER_IP + ":"
-                + SCHEDULER_PORT);
-        commandCenter.initialize();
     }
 }
