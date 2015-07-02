@@ -41,7 +41,7 @@ public class CommandCenter implements SchedulerService.Iface {
 
     private static volatile double POWER_BUDGET = 80;
 
-    private static final double LATENCY_PERCENTILE = 0.90;
+    private static final double LATENCY_PERCENTILE = 0.99;
     private static final int POLLING_INTERVAL = 1000;
 
     public static void main(String[] args) throws IOException {
@@ -101,6 +101,23 @@ public class CommandCenter implements SchedulerService.Iface {
         THostPort hostPort;
         Random rand = new Random();
         hostPort = service_list.get(rand.nextInt(service_list.size())).getHostPort();
+        return hostPort;
+    }
+
+    private THostPort loadBalanceAssignService(List<ServiceInstance> service_list) {
+        THostPort hostPort;
+        double totalProb = 0;
+        for (ServiceInstance instance : service_list) {
+            totalProb += instance.getLoadProb();
+        }
+        Random rand = new Random();
+        double index = rand.nextDouble() * totalProb;
+        double sum = 0;
+        int i = 0;
+        while (sum < index) {
+            sum = sum + service_list.get(i++).getLoadProb();
+        }
+        hostPort = service_list.get(Math.max(0, i - 1)).getHostPort();
         return hostPort;
     }
 
@@ -203,11 +220,13 @@ public class CommandCenter implements SchedulerService.Iface {
             for (String serviceType : serviceMap.keySet()) {
                 List<Double> speedList = new LinkedList<Double>();
                 double totalSpeed = 0;
-                for (ServiceInstance instance : serviceMap.get(serviceType)) {
+                List<ServiceInstance> serviceInstancesList = serviceMap.get(serviceType);
+                for (int i = 0; i < serviceInstancesList.size(); i++) {
+                    ServiceInstance instance = serviceInstancesList.get(i);
                     List<Double> queuingStatistic = instance.getQueuing_latency();
                     double[] evaluateArray = new double[queuingStatistic.size()];
-                    for (int i = 0; i < queuingStatistic.size(); i++) {
-                        evaluateArray[i] = queuingStatistic.get(i).doubleValue();
+                    for (int j = 0; j < queuingStatistic.size(); j++) {
+                        evaluateArray[j] = queuingStatistic.get(j).doubleValue();
                     }
                     double percentileValue = percentile.evaluate(evaluateArray, LATENCY_PERCENTILE);
                     double preProbability = instance.getLoadProb();
@@ -215,10 +234,9 @@ public class CommandCenter implements SchedulerService.Iface {
                     speedList.add(preSpeed);
                     totalSpeed += preSpeed;
                 }
-                int i = 0;
-                for (ServiceInstance instance : serviceMap.get(serviceType)) {
+                for (int i = 0; i < serviceInstancesList.size(); i++) {
+                    ServiceInstance instance = serviceInstancesList.get(i);
                     instance.setLoadProb((1.0 / totalSpeed) / (1.0 / speedList.get(i)));
-                    i++;
                 }
             }
         }
