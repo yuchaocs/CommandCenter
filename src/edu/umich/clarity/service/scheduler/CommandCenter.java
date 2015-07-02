@@ -1,20 +1,15 @@
 package edu.umich.clarity.service.scheduler;
 
 import com.opencsv.CSVWriter;
+import edu.umich.clarity.service.util.TClient;
 import edu.umich.clarity.service.util.TServers;
-import edu.umich.clarity.thrift.QuerySpec;
-import edu.umich.clarity.thrift.RegMessage;
-import edu.umich.clarity.thrift.SchedulerService;
-import edu.umich.clarity.thrift.THostPort;
+import edu.umich.clarity.thrift.*;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TException;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -29,11 +24,15 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final long LATENCY_BUDGET = 300;
     // TODO may need to DAG structure to store the application workflow
     private static final List<String> sirius_workflow = new LinkedList<String>();
-    private static final String[] FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
+    private static final String[] LATENCY_FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
+    private static final String[] QUEUE_FILE_HEADER = {"service_name", "host", "port", "queue_length"};
     private static ConcurrentMap<String, List<THostPort>> serviceMap = new ConcurrentHashMap<String, List<THostPort>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
-    private static CSVWriter csvWriter = null;
+    private static CSVWriter latencyWriter = null;
+    private static CSVWriter queueWriter = null;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
+
+    private static final int POLLING_INTERVAL = 1000;
 
     public static void main(String[] args) throws IOException {
         CommandCenter commandCenter = new CommandCenter();
@@ -57,13 +56,17 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
         try {
-            csvWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            csvWriter.writeNext(FILE_HEADER);
-            csvWriter.flush();
+            latencyWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            latencyWriter.writeNext(LATENCY_FILE_HEADER);
+            latencyWriter.flush();
+            queueWriter = new CSVWriter(new FileWriter("queue_length.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            queueWriter.writeNext(QUEUE_FILE_HEADER);
+            queueWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
         LOG.info("current workflow within command center is " + workflow);
+        // new Thread(new pollQueueLengthRunnable(POLLING_INTERVAL)).start();
         // new Thread(new budgetAdjusterRunnable()).start();
         // new Thread(new latencyStatisticRunnable()).start();
     }
@@ -74,6 +77,7 @@ public class CommandCenter implements SchedulerService.Iface {
         List<THostPort> service_list = serviceMap.get(serviceType);
         if (service_list != null && service_list.size() != 0)
             hostPort = randomAssignService(service_list);
+        LOG.info("receive consulting about service " + serviceType + " and returning " + hostPort.getIp() + ":" + hostPort.getPort());
         return hostPort;
     }
 
@@ -136,12 +140,51 @@ public class CommandCenter implements SchedulerService.Iface {
                     + (total_queuing + total_serving) + "ms");
             csvEntry.add("" + total_queuing);
             csvEntry.add("" + total_serving);
-            csvWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-            csvWriter.flush();
+            latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            latencyWriter.flush();
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private class pollQueueLengthRunnable implements Runnable {
+        private int polling_interval;
+
+        public pollQueueLengthRunnable(int polling_interval) {
+            this.polling_interval = polling_interval;
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                for (Map.Entry<String, List<THostPort>> service : serviceMap.entrySet()) {
+                    for (THostPort hostPort : service.getValue()) {
+                        try {
+                            IPAService.Client client = TClient.creatIPAClient(hostPort.getIp(), hostPort.getPort());
+                            int queueLength = 0;
+                            queueLength = client.reportQueueLength();
+                            ArrayList<String> csvEntry = new ArrayList<String>();
+                            csvEntry.add("" + service.getKey());
+                            csvEntry.add("" + hostPort.getIp());
+                            csvEntry.add("" + hostPort.getPort());
+                            csvEntry.add("" + queueLength);
+                            queueWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                            queueWriter.flush();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        } catch (TException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+                try {
+                    Thread.sleep(polling_interval);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
         }
     }
 
@@ -168,8 +211,8 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                     csvEntry.add("" + total_queuing);
                     csvEntry.add("" + total_serving);
-                    csvWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                    csvWriter.flush();
+                    latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                    latencyWriter.flush();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (IOException e) {

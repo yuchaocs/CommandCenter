@@ -21,7 +21,7 @@ import java.util.Random;
 public class StressClient {
     public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
     private static final double mean = 1000;
-    private static final int num_client = 200;
+    private static final int num_client = 100;
 
     public static void main(String[] args) {
         StressClient client = new StressClient();
@@ -37,28 +37,39 @@ public class StressClient {
     public void genPoissonLoad(double mean, int num_client) {
         PoissonDistribution poi_dist = new PoissonDistribution(mean);
         for (int i = 0; i < num_client; i++) {
-            new Thread(new ConcurrentClient(poi_dist.sample())).start();
+            new Thread(new ConcurrentClient(poi_dist.sample(), Integer.toString(i))).start();
         }
     }
 
     private class ConcurrentClient implements Runnable {
-        private static final String ASR_SERVICE_IP = "clarity28.eecs.umich.edu";
-        private static final int ASR_SERVICE_PORT = 9093;
-        private IPAService.Client stressClient;
+        private static final String NEXT_STAGE = "asr";
+        private static final String SCHEDULER_IP = "localhost";
+        private static final int SCHEDULER_PORT = 8888;
+        private IPAService.Client serviceClient;
+        private SchedulerService.Client schedulerClient;
         private double nap_time;
         private File[] audioFiles;
+        private String name;
 
-        public ConcurrentClient(double nap_time) {
+        public ConcurrentClient(double nap_time, String name) {
             this.nap_time = nap_time;
+            this.name = name;
             File audioDir = new File(AUDIO_PATH);
             this.audioFiles = audioDir.listFiles();
+            try {
+                schedulerClient = TClient.creatSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
         @Override
         public void run() {
             try {
-                stressClient = TClient.creatIPAClient(ASR_SERVICE_IP, ASR_SERVICE_PORT);
+                THostPort hostPort = schedulerClient.consultAddress(NEXT_STAGE);
+                serviceClient = TClient.creatIPAClient(hostPort.getIp(), hostPort.getPort());
                 QuerySpec query = new QuerySpec();
+                query.setName(this.name);
                 query.setBudget(30000);
                 List<Long> timestamp = new LinkedList<Long>();
                 query.setTimestamp(timestamp);
@@ -67,7 +78,7 @@ public class StressClient {
                 query.setInput(Files.readAllBytes(audioFiles[randIndex].toPath()));
                 Thread.sleep(Math.round(nap_time));
                 System.out.println("Sending intput file " + audioFiles[randIndex].getName());
-                stressClient.submitQuery(query);
+                serviceClient.submitQuery(query);
             } catch (IOException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();

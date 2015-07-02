@@ -42,7 +42,11 @@ public class QAService implements IPAService.Iface {
         // qaService.initialize();
     }
 
-//    public void initialize() {
+    @Override
+    public int reportQueueLength() throws TException {
+        return 0;
+    }
+    //    public void initialize() {
 //        // RegReply regReply = null;
 //        try {
 //            scheduler_client = TClient.creatSchedulerClient(SCHEDULER_IP,
