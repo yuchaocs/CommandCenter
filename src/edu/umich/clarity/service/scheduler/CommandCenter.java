@@ -1,11 +1,11 @@
 package edu.umich.clarity.service.scheduler;
 
 import com.opencsv.CSVWriter;
+import edu.umich.clarity.service.util.PowerModel;
+import edu.umich.clarity.service.util.ServiceInstance;
 import edu.umich.clarity.service.util.TServers;
-import edu.umich.clarity.thrift.QuerySpec;
-import edu.umich.clarity.thrift.RegMessage;
-import edu.umich.clarity.thrift.SchedulerService;
-import edu.umich.clarity.thrift.THostPort;
+import edu.umich.clarity.thrift.*;
+import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TException;
 
@@ -29,11 +29,20 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final long LATENCY_BUDGET = 300;
     // TODO may need to DAG structure to store the application workflow
     private static final List<String> sirius_workflow = new LinkedList<String>();
-    private static final String[] FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
-    private static ConcurrentMap<String, List<THostPort>> serviceMap = new ConcurrentHashMap<String, List<THostPort>>();
+    private static final String[] LATENCY_FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
+    private static final String[] QUEUE_FILE_HEADER = {"service_name", "host", "port", "queue_length"};
+
+    private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
-    private static CSVWriter csvWriter = null;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
+
+    private static CSVWriter latencyWriter = null;
+    private static CSVWriter queueWriter = null;
+
+    private static volatile double POWER_BUDGET = 80;
+
+    private static final double LATENCY_PERCENTILE = 0.99;
+    private static final int POLLING_INTERVAL = 1000;
 
     public static void main(String[] args) throws IOException {
         CommandCenter commandCenter = new CommandCenter();
@@ -57,23 +66,28 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
         try {
-            csvWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            csvWriter.writeNext(FILE_HEADER);
-            csvWriter.flush();
+            latencyWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            latencyWriter.writeNext(LATENCY_FILE_HEADER);
+            latencyWriter.flush();
+            queueWriter = new CSVWriter(new FileWriter("queue_length.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            queueWriter.writeNext(QUEUE_FILE_HEADER);
+            queueWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
         LOG.info("current workflow within command center is " + workflow);
+        // new Thread(new pollQueueLengthRunnable(POLLING_INTERVAL)).start();
         // new Thread(new budgetAdjusterRunnable()).start();
-        // new Thread(new latencyStatisticRunnable()).start();
+        // new Thread(new powerBudgetAdjustRunnable()).start();
     }
 
     @Override
     public THostPort consultAddress(String serviceType) throws TException {
         THostPort hostPort = null;
-        List<THostPort> service_list = serviceMap.get(serviceType);
+        List<ServiceInstance> service_list = serviceMap.get(serviceType);
         if (service_list != null && service_list.size() != 0)
             hostPort = randomAssignService(service_list);
+        LOG.info("receive consulting about service " + serviceType + " and returning " + hostPort.getIp() + ":" + hostPort.getPort());
         return hostPort;
     }
 
@@ -83,10 +97,27 @@ public class CommandCenter implements SchedulerService.Iface {
      * @param service_list the service candidates
      * @return the chosen service
      */
-    private THostPort randomAssignService(List<THostPort> service_list) {
+    private THostPort randomAssignService(List<ServiceInstance> service_list) {
         THostPort hostPort;
         Random rand = new Random();
-        hostPort = service_list.get(rand.nextInt(service_list.size()));
+        hostPort = service_list.get(rand.nextInt(service_list.size())).getHostPort();
+        return hostPort;
+    }
+
+    private THostPort loadBalanceAssignService(List<ServiceInstance> service_list) {
+        THostPort hostPort;
+        double totalProb = 0;
+        for (ServiceInstance instance : service_list) {
+            totalProb += instance.getLoadProb();
+        }
+        Random rand = new Random();
+        double index = rand.nextDouble() * totalProb;
+        double sum = 0;
+        int i = 0;
+        while (sum < index) {
+            sum = sum + service_list.get(i++).getLoadProb();
+        }
+        hostPort = service_list.get(Math.max(0, i - 1)).getHostPort();
         return hostPort;
     }
 
@@ -97,12 +128,17 @@ public class CommandCenter implements SchedulerService.Iface {
         LOG.info("receiving register message from service stage " + appName
                 + " running on " + hostPort.getIp() + ":" + hostPort.getPort());
         if (serviceMap.containsKey(appName)) {
-            serviceMap.get(appName).add(hostPort);
+            ServiceInstance serviceInstance = new ServiceInstance();
+            serviceInstance.setHostPort(hostPort);
+            serviceMap.get(appName).add(serviceInstance);
         } else {
-            List<THostPort> serviceList = new LinkedList<THostPort>();
-            serviceList.add(hostPort);
-            serviceMap.put(appName, serviceList);
+            List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
+            ServiceInstance serviceInstance = new ServiceInstance();
+            serviceInstance.setHostPort(hostPort);
+            serviceInstanceList.add(serviceInstance);
+            serviceMap.put(appName, serviceInstanceList);
         }
+        POWER_BUDGET -= PowerModel.getPowerPerFreq(message.getBudget());
     }
 
     @Override
@@ -117,18 +153,17 @@ public class CommandCenter implements SchedulerService.Iface {
             ArrayList<String> csvEntry = new ArrayList<String>();
             long total_queuing = 0;
             long total_serving = 0;
-            for (int i = 0; i < query.getTimestamp().size(); i += 3) {
-                long queuing_time = query.getTimestamp().get(i + 1)
-                        - query.getTimestamp().get(i);
+            for (int i = 0; i < query.getTimestamp().size(); i++) {
+                LatencySpec latencySpec = query.getTimestamp().get(i);
+                long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
                 total_queuing += queuing_time;
-                long serving_time = query.getTimestamp().get(i + 2)
-                        - query.getTimestamp().get(i + 1);
+                long serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
                 total_serving += serving_time;
                 csvEntry.add("" + queuing_time);
                 csvEntry.add("" + serving_time);
                 LOG.info("Query: queuing time " + queuing_time
                         + "ms," + " serving time " + serving_time + "ms" + " @stage "
-                        + sirius_workflow.get(i / 3));
+                        + sirius_workflow.get(i));
             }
             LOG.info("Query: total queuing "
                     + total_queuing + "ms" + " total serving " + total_serving
@@ -136,8 +171,8 @@ public class CommandCenter implements SchedulerService.Iface {
                     + (total_queuing + total_serving) + "ms");
             csvEntry.add("" + total_queuing);
             csvEntry.add("" + total_serving);
-            csvWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-            csvWriter.flush();
+            latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            latencyWriter.flush();
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -145,86 +180,63 @@ public class CommandCenter implements SchedulerService.Iface {
         }
     }
 
-    private class latencyStatisticRunnable implements Runnable {
+    private class powerBudgetAdjustRunnable implements Runnable {
+        private long removed_queries = 0;
 
         @Override
         public void run() {
-            LOG.info("starting the helper thread to scan the finished query queue for logging latency statistics");
+            LOG.info("starting the helper thread for adjusting power budget across stages");
             while (true) {
                 try {
                     QuerySpec query = finishedQueryQueue.take();
-                    ArrayList<String> csvEntry = new ArrayList<String>();
-                    long total_queuing = 0;
-                    long total_serving = 0;
-                    for (int i = 0; i < query.getTimestamp().size(); i += 3) {
-                        long queuing_time = query.getTimestamp().get(i + 1)
-                                - query.getTimestamp().get(i);
-                        total_queuing += queuing_time;
-                        long serving_time = query.getTimestamp().get(i + 2)
-                                - query.getTimestamp().get(i + 1);
-                        total_serving += serving_time;
-                        csvEntry.add("" + queuing_time);
-                        csvEntry.add("" + serving_time);
+                    for (int i = 0; i < query.getTimestamp().size(); i++) {
+                        LatencySpec latencySpec = query.getTimestamp().get(i);
+                        long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
+                        long serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
+                        String serviceType = latencySpec.getInstance_id().split("_")[0];
+                        String host = latencySpec.getInstance_id().split("_")[1];
+                        String port = latencySpec.getInstance_id().split("_")[2];
+                        for (ServiceInstance instance : serviceMap.get(serviceType)) {
+                            String instanceIp = instance.getHostPort().getIp();
+                            int instancePort = instance.getHostPort().getPort();
+                            if (instanceIp.equalsIgnoreCase(host) && instancePort == new Integer(port)) {
+                                instance.getServing_latency().add(new Double(serving_time));
+                                instance.getQueuing_latency().add(new Double(queuing_time));
+                            }
+                        }
                     }
-                    csvEntry.add("" + total_queuing);
-                    csvEntry.add("" + total_serving);
-                    csvWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                    csvWriter.flush();
+                    removed_queries += 1;
+                    if (removed_queries % QUERY_INTERVAL == 0) {
+                        loadBalance();
+                    }
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
         }
-    }
 
-    private class budgetAdjusterRunnable implements Runnable {
-        long removed_queries = 0;
-        long[] stage_latency = new long[sirius_workflow.size()];
-        long total_latency = 0;
-
-        @Override
-        public void run() {
-            LOG.info("starting the helper thread to scan the finished query queue and update stage budget every "
-                    + QUERY_INTERVAL + " queries");
-            while (true) {
-                try {
-                    QuerySpec query = finishedQueryQueue.take();
-                    for (int i = 0; i < query.getTimestamp().size(); i += 3) {
-                        long queuing_time = query.getTimestamp().get(i + 1)
-                                - query.getTimestamp().get(i);
-                        long serving_time = query.getTimestamp().get(i + 2)
-                                - query.getTimestamp().get(i + 1);
-                        stage_latency[i / 3] += queuing_time + serving_time;
-                        total_latency += queuing_time + serving_time;
+        private void loadBalance() {
+            Percentile percentile = new Percentile();
+            for (String serviceType : serviceMap.keySet()) {
+                List<Double> speedList = new LinkedList<Double>();
+                double totalSpeed = 0;
+                List<ServiceInstance> serviceInstancesList = serviceMap.get(serviceType);
+                for (int i = 0; i < serviceInstancesList.size(); i++) {
+                    ServiceInstance instance = serviceInstancesList.get(i);
+                    List<Double> queuingStatistic = instance.getQueuing_latency();
+                    double[] evaluateArray = new double[queuingStatistic.size()];
+                    for (int j = 0; j < queuingStatistic.size(); j++) {
+                        evaluateArray[j] = queuingStatistic.get(j).doubleValue();
                     }
-                    removed_queries += 1;
-                    if (removed_queries % QUERY_INTERVAL == 0) {
-                        for (int i = 0; i < stage_latency.length; i++) {
-                            double stage_budget = stage_latency[i] * 1.0
-                                    / total_latency * LATENCY_BUDGET;
-//                            for (THostPort hostport : serviceMap.get(
-//                                    sirius_workflow.get(i)).keySet()) {
-//                                Client client = serviceMap.get(
-//                                        sirius_workflow.get(i)).get(hostport);
-//                                try {
-//                                    LOG.info("updating "
-//                                            + "sirius_workflow.get(i)"
-//                                            + " stage at " + hostport.getIp()
-//                                            + ":" + hostport.getPort()
-//                                            + " with budget " + stage_budget);
-//                                    client.updatBudget(stage_budget);
-//                                } catch (TException e) {
-//                                    e.printStackTrace();
-//                                }
-//                            }
-                            stage_latency[i] = 0;
-                        }
-                        total_latency = 0;
-                    }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    double percentileValue = percentile.evaluate(evaluateArray, LATENCY_PERCENTILE);
+                    double preProbability = instance.getLoadProb();
+                    double preSpeed = preProbability / percentileValue;
+                    speedList.add(preSpeed);
+                    totalSpeed += preSpeed;
+                }
+                for (int i = 0; i < serviceInstancesList.size(); i++) {
+                    ServiceInstance instance = serviceInstancesList.get(i);
+                    instance.setLoadProb((1.0 / totalSpeed) / (1.0 / speedList.get(i)));
                 }
             }
         }

@@ -2,10 +2,7 @@ package edu.umich.clarity.service.ipa;
 
 import edu.umich.clarity.service.util.QueryComparator;
 import edu.umich.clarity.service.util.TServers;
-import edu.umich.clarity.thrift.IPAService;
-import edu.umich.clarity.thrift.QuerySpec;
-import edu.umich.clarity.thrift.SchedulerService;
-import edu.umich.clarity.thrift.THostPort;
+import edu.umich.clarity.thrift.*;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TException;
 
@@ -42,7 +39,11 @@ public class QAService implements IPAService.Iface {
         // qaService.initialize();
     }
 
-//    public void initialize() {
+    @Override
+    public int reportQueueLength() throws TException {
+        return 0;
+    }
+    //    public void initialize() {
 //        // RegReply regReply = null;
 //        try {
 //            scheduler_client = TClient.creatSchedulerClient(SCHEDULER_IP,
@@ -103,7 +104,8 @@ public class QAService implements IPAService.Iface {
     @Override
     public void submitQuery(QuerySpec query) throws TException {
         // timestamp the query when it is enqueued (start)
-        query.getTimestamp().add(System.currentTimeMillis());
+        LatencySpec latencySpec = new LatencySpec();
+        query.getTimestamp().add(latencySpec);
         try {
             queryQueue.put(query);
         } catch (InterruptedException e) {
@@ -129,9 +131,10 @@ public class QAService implements IPAService.Iface {
                     // this is also the timestamp for the start of serving
                     // (start)
                     long queuing_start_time = query.getTimestamp().get(
-                            query.getTimestamp().size() - 1);
+                            query.getTimestamp().size() - 1).getQueuing_start_time();
                     long process_start_time = System.currentTimeMillis();
-                    query.getTimestamp().add(process_start_time);
+                    query.getTimestamp().add(query.getTimestamp().get(
+                            query.getTimestamp().size() - 1).setServing_start_time(process_start_time));
                     LOG.info("the queuing time for the query is "
                             + (process_start_time - queuing_start_time) + "ms");
                     /**
@@ -151,7 +154,8 @@ public class QAService implements IPAService.Iface {
                     LOG.info("the serving time for the query is "
                             + (process_end_time - process_start_time) + "ms");
                     // timestamp the query when it is served (end)
-                    query.getTimestamp().add(process_end_time);
+                    query.getTimestamp().add(query.getTimestamp().get(
+                            query.getTimestamp().size() - 1).setServing_end_time(process_end_time));
                     // update the query budget
                     query.setBudget(query.getBudget()
                             - (process_end_time - process_start_time));

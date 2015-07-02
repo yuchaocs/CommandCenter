@@ -5,10 +5,18 @@ struct THostPort {
 	2: i32 port;
 }
 
+struct LatencySpec {
+	1: string instance_id;
+	2: i64 queuing_start_time;
+	// serving start time equals queuing end time
+	3: i64 serving_start_time;
+	4: i64 serving_end_time;
+}
+
 struct QuerySpec {
 	1: optional string name;
 	2: binary input;
-	3: list<i64> timestamp;
+	3: list<LatencySpec> timestamp;
 	4: double budget; 
 }
 
