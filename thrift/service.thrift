@@ -13,3 +13,7 @@ service IPAService {
 	void updatBudget(1: double budget),
 	void submitQuery(1: types.QuerySpec query)
 }
+
+service NodeManagerService {
+	types.THostPort launchServiceInstance(1: string serviceType, 2: double budget)
+}

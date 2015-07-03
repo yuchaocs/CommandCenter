@@ -4,8 +4,10 @@ package edu.umich.clarity.service.util;
  * Created by hailong on 7/1/15.
  */
 public class PowerModel {
-    private static final double P0 = 1.65;
-    private static final double F0 = 1.2;
+
+    public static final double P0 = 1.65;
+    public static final double F0 = 1.2;
+    public static final double FN = 2.4;
 
     public static double getPowerPerFreq(double freq) {
         double estimated_power = 0.0;

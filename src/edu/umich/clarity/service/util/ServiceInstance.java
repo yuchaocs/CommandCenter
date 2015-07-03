@@ -14,7 +14,11 @@ public class ServiceInstance {
     private THostPort hostPort;
     private List<Double> queuing_latency;
     private List<Double> serving_latency;
+    private double servingTimePercentile;
+    private double queuingTimePercentile;
+    private double estimatedServingTime;
     private double loadProb;
+    private double currentFrequncy;
 
     public ServiceInstance() {
         this.queuing_latency = new LinkedList<Double>();
@@ -68,5 +72,37 @@ public class ServiceInstance {
 
     public void setCurrentQueueLength(int currentQueueLength) {
         this.currentQueueLength = currentQueueLength;
+    }
+
+    public double getServingTimePercentile() {
+        return servingTimePercentile;
+    }
+
+    public double getQueuingTimePercentile() {
+        return queuingTimePercentile;
+    }
+
+    public void setServingTimePercentile(double servingTimePercentile) {
+        this.servingTimePercentile = servingTimePercentile;
+    }
+
+    public void setQueuingTimePercentile(double queuingTimePercentile) {
+        this.queuingTimePercentile = queuingTimePercentile;
+    }
+
+    public double getEstimatedServingTime() {
+        return estimatedServingTime;
+    }
+
+    public void setEstimatedServingTime(double estimatedServingTime) {
+        this.estimatedServingTime = estimatedServingTime;
+    }
+
+    public double getCurrentFrequncy() {
+        return currentFrequncy;
+    }
+
+    public void setCurrentFrequncy(double currentFrequncy) {
+        this.currentFrequncy = currentFrequncy;
     }
 }
