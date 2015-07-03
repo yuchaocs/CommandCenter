@@ -27,7 +27,7 @@ public class QAClient {
 			String input = "what is the speed of the light?";
 			query.setInput(input.getBytes());
 			List<Long> timestamp = new LinkedList<Long>();
-			query.setTimestamp(timestamp);
+			//query.setTimestamp(timestamp);
 			qaClient.submitQuery(query);
 		} catch (IOException | TException e) {
 			// TODO Auto-generated catch block

@@ -1,6 +1,5 @@
 package edu.umich.clarity.service.util;
 
-import edu.umich.clarity.thrift.LatencySpec;
 import edu.umich.clarity.thrift.THostPort;
 
 import java.util.LinkedList;
@@ -10,6 +9,8 @@ import java.util.List;
  * Created by hailong on 7/2/15.
  */
 public class ServiceInstance {
+    private String serviceType;
+    private int currentQueueLength;
     private THostPort hostPort;
     private List<Double> queuing_latency;
     private List<Double> serving_latency;
@@ -25,8 +26,16 @@ public class ServiceInstance {
         return queuing_latency;
     }
 
+    public void setQueuing_latency(List<Double> queuing_latency) {
+        this.queuing_latency = queuing_latency;
+    }
+
     public List<Double> getServing_latency() {
         return serving_latency;
+    }
+
+    public void setServing_latency(List<Double> serving_latency) {
+        this.serving_latency = serving_latency;
     }
 
     public THostPort getHostPort() {
@@ -37,19 +46,27 @@ public class ServiceInstance {
         this.hostPort = hostPort;
     }
 
-    public void setQueuing_latency(List<Double> queuing_latency) {
-        this.queuing_latency = queuing_latency;
-    }
-
-    public void setServing_latency(List<Double> serving_latency) {
-        this.serving_latency = serving_latency;
-    }
-
     public double getLoadProb() {
         return loadProb;
     }
 
     public void setLoadProb(double loadProb) {
         this.loadProb = loadProb;
+    }
+
+    public String getServiceType() {
+        return serviceType;
+    }
+
+    public void setServiceType(String serviceType) {
+        this.serviceType = serviceType;
+    }
+
+    public int getCurrentQueueLength() {
+        return currentQueueLength;
+    }
+
+    public void setCurrentQueueLength(int currentQueueLength) {
+        this.currentQueueLength = currentQueueLength;
     }
 }

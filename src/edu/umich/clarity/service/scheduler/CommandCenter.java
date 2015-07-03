@@ -3,6 +3,7 @@ package edu.umich.clarity.service.scheduler;
 import com.opencsv.CSVWriter;
 import edu.umich.clarity.service.util.PowerModel;
 import edu.umich.clarity.service.util.ServiceInstance;
+import edu.umich.clarity.service.util.TClient;
 import edu.umich.clarity.service.util.TServers;
 import edu.umich.clarity.thrift.*;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
@@ -11,10 +12,7 @@ import org.apache.thrift.TException;
 
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -31,18 +29,15 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final List<String> sirius_workflow = new LinkedList<String>();
     private static final String[] LATENCY_FILE_HEADER = {"asr_queuing", "asr_serving", "imm_queuing", "imm_serving", "qa_queuing", "qa_serving", "total_queuing", "total_serving"};
     private static final String[] QUEUE_FILE_HEADER = {"service_name", "host", "port", "queue_length"};
-
-    private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
-    private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
-    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
-
-    private static CSVWriter latencyWriter = null;
-    private static CSVWriter queueWriter = null;
-
-    private static volatile double POWER_BUDGET = 80;
-
     private static final double LATENCY_PERCENTILE = 0.99;
     private static final int POLLING_INTERVAL = 1000;
+    private static final double ADJUST_THRESHOLD = 1000;
+    private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
+    private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
+    private static CSVWriter latencyWriter = null;
+    private static CSVWriter queueWriter = null;
+    private static volatile double POWER_BUDGET = 80;
+    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
     public static void main(String[] args) throws IOException {
         CommandCenter commandCenter = new CommandCenter();
@@ -76,7 +71,7 @@ public class CommandCenter implements SchedulerService.Iface {
             e.printStackTrace();
         }
         LOG.info("current workflow within command center is " + workflow);
-        // new Thread(new pollQueueLengthRunnable(POLLING_INTERVAL)).start();
+        new Thread(new powerBudgetAdjustRunnable()).start();
         // new Thread(new budgetAdjusterRunnable()).start();
         // new Thread(new powerBudgetAdjustRunnable()).start();
     }
@@ -86,7 +81,8 @@ public class CommandCenter implements SchedulerService.Iface {
         THostPort hostPort = null;
         List<ServiceInstance> service_list = serviceMap.get(serviceType);
         if (service_list != null && service_list.size() != 0)
-            hostPort = randomAssignService(service_list);
+            // hostPort = randomAssignService(service_list);
+            hostPort = loadBalanceAssignService(service_list);
         LOG.info("receive consulting about service " + serviceType + " and returning " + hostPort.getIp() + ":" + hostPort.getPort());
         return hostPort;
     }
@@ -104,20 +100,34 @@ public class CommandCenter implements SchedulerService.Iface {
         return hostPort;
     }
 
+    /**
+     * Based on the 99th percentile queuing time distribution of each service instance to balance the queue length.
+     *
+     * @param service_list the candidate list of particular service type
+     * @return the chosen service instance
+     */
     private THostPort loadBalanceAssignService(List<ServiceInstance> service_list) {
         THostPort hostPort;
+        Collections.sort(service_list, new LoadProbabilityComparator());
+
         double totalProb = 0;
         for (ServiceInstance instance : service_list) {
             totalProb += instance.getLoadProb();
         }
+
         Random rand = new Random();
         double index = rand.nextDouble() * totalProb;
-        double sum = 0;
+
         int i = 0;
-        while (sum < index) {
-            sum = sum + service_list.get(i++).getLoadProb();
+        totalProb = 0;
+        for (ServiceInstance instance : service_list) {
+            totalProb += instance.getLoadProb();
+            if (totalProb > index) {
+                break;
+            }
+            i++;
         }
-        hostPort = service_list.get(Math.max(0, i - 1)).getHostPort();
+        hostPort = service_list.get(i).getHostPort();
         return hostPort;
     }
 
@@ -130,11 +140,13 @@ public class CommandCenter implements SchedulerService.Iface {
         if (serviceMap.containsKey(appName)) {
             ServiceInstance serviceInstance = new ServiceInstance();
             serviceInstance.setHostPort(hostPort);
+            serviceInstance.setServiceType(appName);
             serviceMap.get(appName).add(serviceInstance);
         } else {
             List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
             ServiceInstance serviceInstance = new ServiceInstance();
             serviceInstance.setHostPort(hostPort);
+            serviceInstance.setServiceType(appName);
             serviceInstanceList.add(serviceInstance);
             serviceMap.put(appName, serviceInstanceList);
         }
@@ -207,11 +219,32 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                     removed_queries += 1;
                     if (removed_queries % QUERY_INTERVAL == 0) {
+                        adjustPowerBudget();
                         loadBalance();
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
+            }
+        }
+
+        private void adjustPowerBudget() {
+            /**
+             * TODO two approaches can be applied: 1. whenever there are enough power budget left, launch a new service instance of the one that has the longest estimated finish time; 2. if no power budget left, lower the frequency of the fastest service instance in order to increase the frequency of the slowest service instance.
+             */
+            List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
+            for (String serviceType : serviceMap.keySet()) {
+                for (ServiceInstance instance : serviceMap.get(serviceType)) {
+                    try {
+                        IPAService.Client client = TClient.creatIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
+                        instance.setCurrentQueueLength(client.reportQueueLength());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } catch (TException e) {
+                        e.printStackTrace();
+                    }
+                }
+                serviceInstanceList.addAll(serviceMap.get(serviceType));
             }
         }
 
@@ -241,4 +274,23 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
     }
+
+    private class LoadProbabilityComparator implements Comparator<ServiceInstance> {
+        @Override
+        public int compare(ServiceInstance instance1, ServiceInstance instance2) {
+            return Double.compare(instance1.getLoadProb(), instance2.getLoadProb());
+        }
+    }
+
+    private class ServingTimeComparator implements Comparator<ServiceInstance> {
+        @Override
+        public int compare(ServiceInstance instance1, ServiceInstance instance2) {
+
+            return Double.compare(instance1.getLoadProb(), instance2.getLoadProb());
+        }
+    }
+
+    /**
+     * TODO command center need a new service running on each node to launch additional service instance when necessary
+     */
 }
