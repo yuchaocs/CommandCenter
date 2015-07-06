@@ -543,7 +543,7 @@ public class CommandCenter implements SchedulerService.Iface {
      */
     private class ServingTimeComparator implements Comparator<ServiceInstance> {
         /**
-         * 
+         *
          * @param instance1
          * @param instance2
          * @return

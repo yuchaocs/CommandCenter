@@ -6,6 +6,7 @@ struct THostPort {
 }
 
 struct LatencySpec {
+	// servicetype_ip_port
 	1: string instance_id;
 	2: i64 queuing_start_time;
 	// serving start time equals queuing end time
