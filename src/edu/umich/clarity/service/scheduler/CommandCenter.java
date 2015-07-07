@@ -21,33 +21,38 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
-
+    public static final boolean VANILLA_MODE = false;
     private static final double GLOBAL_POWER_BUDGET = 9.48 * 3;
+    // save for future use
     private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
     private static final int NODE_MANAGER_PORT = 8060;
+
     private static final Logger LOG = Logger.getLogger(CommandCenter.class);
     private static final String SCHEDULER_IP = "localhost";
     private static final int SCHEDULER_PORT = 8888;
+    // the interval to adjust power budget (per queries)
     private static final int BUDGET_ADJUST_INTERVAL = 10;
-    private static final int RELINQUISH_ADJUST_INTERVAL = 30;
+    // the interval to withdraw the idle service instances (per queries)
+    private static final int RELINQUISH_ADJUST_INTERVAL = 100;
+    // best effort or guarantee
     private static final long LATENCY_BUDGET = 300;
-    // TODO may need to DAG structure to store the application workflow
     private static final List<String> sirius_workflow = new LinkedList<String>();
+    // headers for the CSV result files
     private static final String[] LATENCY_FILE_HEADER = {"asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
     private static final String[] QUEUE_FILE_HEADER = {"service_name", "host", "port", "queue_length"};
+    // the tail latency target
     private static final double LATENCY_PERCENTILE = 99;
-    private static final int POLLING_INTERVAL = 1000;
+    // latency threshold between instances before stopping power adjustment
     private static final double ADJUST_THRESHOLD = 1000;
+    private static final double DEFAULT_FREQUENCY = 1.2;
     private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private static CSVWriter latencyWriter = null;
     private static CSVWriter queueWriter = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
-    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
-    private static final double DEFAULT_FREQUENCY = 1.2;
-
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
+    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
     /**
      * @param args
@@ -100,7 +105,8 @@ public class CommandCenter implements SchedulerService.Iface {
         LOG.info("the global power budget is set to " + POWER_BUDGET.get().doubleValue());
         LOG.info("current workflow within command center is " + workflow);
         //LOG.info("launching the power budget managing thread with adjusting interval per " + BUDGET_ADJUST_INTERVAL + " queries and recycling interval per " + RELINQUISH_ADJUST_INTERVAL + " queries");
-        new Thread(new powerBudgetAdjustRunnable()).start();
+        if (!VANILLA_MODE)
+            new Thread(new powerBudgetAdjustRunnable()).start();
         // new Thread(new budgetAdjusterRunnable()).start();
         // new Thread(new powerBudgetAdjustRunnable()).start();
     }
@@ -116,8 +122,10 @@ public class CommandCenter implements SchedulerService.Iface {
         THostPort hostPort = null;
         List<ServiceInstance> service_list = serviceMap.get(serviceType);
         if (service_list != null && service_list.size() != 0)
-            // hostPort = randomAssignService(service_list);
-            hostPort = loadBalanceAssignService(service_list);
+            if (!VANILLA_MODE)
+                hostPort = loadBalanceAssignService(service_list);
+            else
+                hostPort = randomAssignService(service_list);
         return hostPort;
     }
 
@@ -298,9 +306,6 @@ public class CommandCenter implements SchedulerService.Iface {
         /**
          * Every RELINQUISH_ADJUST_INTERVAL queries, if the queuing time of a service instance keeps zero and there are multiple instances of that service type available, stop one service instance and relinquish the power budget.
          */
-        /**
-         *
-         */
         private void relinquishServiceInstance() {
             LOG.info("==================================================");
             LOG.info("start to recycle the service instances...");
@@ -362,7 +367,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("==================================================");
             LOG.info("adjust the power budget...");
             /**
-             * TODO two approaches can be applied: 1. whenever there are enough power budget left, launch a new service instance of the one that has the longest estimated finish time; 2. if no power budget left, lower the frequency of the fastest service instance in order to increase the frequency of the slowest service instance.
+             * two approaches can be applied: 1. whenever there are enough power budget left, launch a new service instance of the one that has the longest estimated finish time; 2. if no power budget left, lower the frequency of the fastest service instance in order to increase the frequency of the slowest service instance.
              */
             // 1. pull real time queue length from each of the service instance
             // 2. estimate the serving time based on the queue length as well as the historical 99th percentile serving time
@@ -462,12 +467,14 @@ public class CommandCenter implements SchedulerService.Iface {
                         LOG.info("the required power is " + requiredPower);
                         if (currentFreq == PowerModel.FN) {
                             serviceInstanceList.remove(0);
+                            LOG.info("the slowest service instance is already at maximum frequency, trying to adjust the next slowest service instance");
                             relocatePowerBudget(serviceInstanceList);
                         } else {
                             Map<ServiceInstance, Double> adjustInstance = new HashMap<ServiceInstance, Double>();
                             if (requiredPower <= POWER_BUDGET.get().doubleValue()) {
                                 adjustInstance.put(instance, currentFreq + 0.1);
                                 POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - requiredPower));
+                                LOG.info("the available global power budget is enough to increase the frequency of the service instance");
                             } else {
                                 double sum = 0;
                                 for (int i = (serviceInstanceList.size() - 1); i > 0; i--) {
