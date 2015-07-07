@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
-    public static final boolean VANILLA_MODE = false;
+    public static final boolean VANILLA_MODE = true;
     private static final double GLOBAL_POWER_BUDGET = 9.48 * 3;
     // save for future use
     private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
@@ -39,7 +39,6 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
     private static final String[] LATENCY_FILE_HEADER = {"asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
-    private static final String[] QUEUE_FILE_HEADER = {"service_name", "host", "port", "queue_length"};
     // the tail latency target
     private static final double LATENCY_PERCENTILE = 99;
     // latency threshold between instances before stopping power adjustment
@@ -49,7 +48,6 @@ public class CommandCenter implements SchedulerService.Iface {
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private static CSVWriter latencyWriter = null;
-    private static CSVWriter queueWriter = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
@@ -86,9 +84,6 @@ public class CommandCenter implements SchedulerService.Iface {
             latencyWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             latencyWriter.writeNext(LATENCY_FILE_HEADER);
             latencyWriter.flush();
-            queueWriter = new CSVWriter(new FileWriter("queue_length.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            queueWriter.writeNext(QUEUE_FILE_HEADER);
-            queueWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }

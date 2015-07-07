@@ -18,7 +18,7 @@ import java.util.Random;
 public class StressClient {
     public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
     private static final double mean = 1500;
-    private static final int num_client = 300;
+    private static final int num_client = 200;
 
     public static void main(String[] args) {
         StressClient client = new StressClient();
