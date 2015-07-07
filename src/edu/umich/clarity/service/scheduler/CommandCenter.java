@@ -1,15 +1,14 @@
 package edu.umich.clarity.service.scheduler;
 
+import com.opencsv.CSVReader;
 import com.opencsv.CSVWriter;
-import edu.umich.clarity.service.util.PowerModel;
-import edu.umich.clarity.service.util.ServiceInstance;
-import edu.umich.clarity.service.util.TClient;
-import edu.umich.clarity.service.util.TServers;
+import edu.umich.clarity.service.util.*;
 import edu.umich.clarity.thrift.*;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TException;
 
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.*;
@@ -50,8 +49,10 @@ public class CommandCenter implements SchedulerService.Iface {
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private static CSVWriter latencyWriter = null;
     private static CSVWriter queueWriter = null;
+    private static CSVReader speedupReader = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
+    private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
     /**
@@ -83,6 +84,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
         try {
+            speedupReader = new CSVReader(new FileReader("speedup.csv"), ',', '\n', 1);
             latencyWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             latencyWriter.writeNext(LATENCY_FILE_HEADER);
             latencyWriter.flush();
@@ -102,6 +104,25 @@ public class CommandCenter implements SchedulerService.Iface {
             candidatePortList.add(i);
         }
         POWER_BUDGET.set(GLOBAL_POWER_BUDGET);
+
+        // build the speedup sheet
+        String[] nextLine;
+        int index = 0;
+        try {
+            while ((nextLine = speedupReader.readNext()) != null) {
+                Map<Double, Double> speedup = new HashMap<Double, Double>();
+                double curFreq = 1.2;
+                for (int i = 0; i < nextLine.length; i++) {
+                    speedup.put(curFreq, new Double(nextLine[i]));
+                    curFreq += 0.1;
+                }
+                speedupSheet.put(sirius_workflow.get(index), speedup);
+                index++;
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
         LOG.info("the global power budget is set to " + POWER_BUDGET.get().doubleValue());
         LOG.info("current workflow within command center is " + workflow);
         //LOG.info("launching the power budget managing thread with adjusting interval per " + BUDGET_ADJUST_INTERVAL + " queries and recycling interval per " + RELINQUISH_ADJUST_INTERVAL + " queries");
@@ -361,7 +382,7 @@ public class CommandCenter implements SchedulerService.Iface {
         }
 
         /**
-         *
+         * TODO 1. using the queuing and serving time distribution to identify the bottleneck service instance; 2. based on the distribution, predict which way (frequency or new instance) is more beneficial to tail latency
          */
         private void adjustPowerBudget() {
             LOG.info("==================================================");
@@ -371,7 +392,7 @@ public class CommandCenter implements SchedulerService.Iface {
              */
             // 1. pull real time queue length from each of the service instance
             // 2. estimate the serving time based on the queue length as well as the historical 99th percentile serving time
-            LOG.info("estimating the serving time of each service instance based on the real time queue length and 99th serving time distrition");
+            LOG.info("estimating the serving time of each service instance based on the real time queue length and 99th serving time distribution");
             List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
             Percentile percentile = new Percentile();
             for (String serviceType : serviceMap.keySet()) {
@@ -411,8 +432,20 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             // 3. sort the service instance based on the estimated serving time
             Collections.sort(serviceInstanceList, new ServingTimeComparator());
+            BoostDecision decision = predictBoostDecision(serviceInstanceList.get(0));
             relocatePowerBudget(serviceInstanceList);
             LOG.info("==================================================");
+        }
+
+        private BoostDecision predictBoostDecision(ServiceInstance instance) {
+            BoostDecision decision = new BoostDecision();
+            // 1. calculate the tail latency of frequency boosting
+            // a. using the speedup sheet to estimate the serving time speedup
+            // b. reducing the 99th tail latency of both queuing and serving time
+
+            // 2. calculate the tail latency of instance boosting
+            // a. reducing the 99th tail latency of queuing time to 50%
+            return decision;
         }
 
         /**
