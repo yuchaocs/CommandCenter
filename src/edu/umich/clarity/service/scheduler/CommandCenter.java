@@ -11,6 +11,7 @@ import org.apache.thrift.TException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.DecimalFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -20,7 +21,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
-    public static final boolean VANILLA_MODE = false;
+    public static final String LATENCY_TYPE = "tail";
+
+    public static final boolean VANILLA_MODE = true;
     private static final double GLOBAL_POWER_BUDGET = 9.48 * 3;
     // save for future use
     private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
@@ -48,12 +51,16 @@ public class CommandCenter implements SchedulerService.Iface {
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private static CSVWriter latencyWriter = null;
-    private static CSVWriter queueWriter = null;
     private static CSVReader speedupReader = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
+    private static List<Double> freqRangeList = new LinkedList<Double>();
+//    private static final String[] FREQ_RANGE =
+//            {
+//                    "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "2.0", "2.1", "2.2", "2.3", "2.4"
+//            };
 
     /**
      * @param args
@@ -73,6 +80,10 @@ public class CommandCenter implements SchedulerService.Iface {
      *
      */
     public void initialize() {
+        DecimalFormat dFormat = new DecimalFormat("#.#");
+        for (double i = 1.2; i < 2.5; i += 0.1) {
+            freqRangeList.add(Double.valueOf((dFormat.format(i))));
+        }
         sirius_workflow.add("asr");
         sirius_workflow.add("imm");
         sirius_workflow.add("qa");
@@ -84,13 +95,10 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
         try {
-            speedupReader = new CSVReader(new FileReader("speedup.csv"), ',', '\n', 1);
+            speedupReader = new CSVReader(new FileReader("freq.csv"), ',', '\n', 1);
             latencyWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             latencyWriter.writeNext(LATENCY_FILE_HEADER);
             latencyWriter.flush();
-            queueWriter = new CSVWriter(new FileWriter("queue_length.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            queueWriter.writeNext(QUEUE_FILE_HEADER);
-            queueWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -111,10 +119,8 @@ public class CommandCenter implements SchedulerService.Iface {
         try {
             while ((nextLine = speedupReader.readNext()) != null) {
                 Map<Double, Double> speedup = new HashMap<Double, Double>();
-                double curFreq = 1.2;
                 for (int i = 0; i < nextLine.length; i++) {
-                    speedup.put(curFreq, new Double(nextLine[i]));
-                    curFreq += 0.1;
+                    speedup.put(freqRangeList.get(i), new Double(nextLine[i]));
                 }
                 speedupSheet.put(sirius_workflow.get(index), speedup);
                 index++;
@@ -122,6 +128,10 @@ public class CommandCenter implements SchedulerService.Iface {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
+//        for (String serviceType : speedupSheet.keySet()) {
+//            System.out.println(serviceType + ":" + speedupSheet.get(serviceType).get(FREQ_RANGE[5]));
+//        }
 
         LOG.info("the global power budget is set to " + POWER_BUDGET.get().doubleValue());
         LOG.info("current workflow within command center is " + workflow);
@@ -313,7 +323,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     LOG.info(removed_queries + " query latency statistics are returned to command center");
                     if (removed_queries % BUDGET_ADJUST_INTERVAL == 0) {
                         adjustPowerBudget();
-                        loadBalance();
+                        // loadBalance();
                     }
                     if (removed_queries % RELINQUISH_ADJUST_INTERVAL == 0) {
                         relinquishServiceInstance();
@@ -382,63 +392,149 @@ public class CommandCenter implements SchedulerService.Iface {
         }
 
         /**
-         * TODO 1. using the queuing and serving time distribution to identify the bottleneck service instance; 2. based on the distribution, predict which way (frequency or new instance) is more beneficial to tail latency
+         * The policy for adjusting the power budget is to:
+         * 1. find out the slowest service instance(based on the 99th queuing latency) within the service topology
+         * 2. predict the tail latency(tail latency / power) benefits of two control knobs(increase frequency or launch instance)
+         * 3. recycling the power if the global power budget is not enough to satisfy the required power
          */
         private void adjustPowerBudget() {
             LOG.info("==================================================");
             LOG.info("adjust the power budget...");
-            /**
-             * two approaches can be applied: 1. whenever there are enough power budget left, launch a new service instance of the one that has the longest estimated finish time; 2. if no power budget left, lower the frequency of the fastest service instance in order to increase the frequency of the slowest service instance.
-             */
-            // 1. pull real time queue length from each of the service instance
-            // 2. estimate the serving time based on the queue length as well as the historical 99th percentile serving time
-            LOG.info("estimating the serving time of each service instance based on the real time queue length and 99th serving time distribution");
+            LOG.info("ranking the service instance based on the 99th queuing latency");
             List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
             Percentile percentile = new Percentile();
             for (String serviceType : serviceMap.keySet()) {
                 for (ServiceInstance instance : serviceMap.get(serviceType)) {
-                    try {
-                        IPAService.Client client = TClient.creatIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
-                        instance.setCurrentQueueLength(client.reportQueueLength());
-                        LOG.info("the real time queue length of service instance " + serviceType + " running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " is " + instance.getCurrentQueueLength());
-                        List<Double> servingLatencyStatistic = instance.getServing_latency();
-                        List<Double> queuingLatencyStatistic = instance.getQueuing_latency();
-                        double servingPercentileValue = 0;
-                        double queuingPercentileValue = 0;
-                        if (servingLatencyStatistic.size() == 0) {
-                            servingPercentileValue = instance.getServingTimePercentile();
-                        } else {
-                            double[] evaluateServingArray = new double[servingLatencyStatistic.size()];
-                            double[] evaluateQueuingArray = new double[servingLatencyStatistic.size()];
-                            for (int i = 0; i < servingLatencyStatistic.size(); i++) {
-                                evaluateServingArray[i] = servingLatencyStatistic.get(i).doubleValue();
-                                evaluateQueuingArray[i] = queuingLatencyStatistic.get(i).doubleValue();
-                            }
-                            servingPercentileValue = percentile.evaluate(evaluateServingArray, LATENCY_PERCENTILE);
-                            queuingPercentileValue = percentile.evaluate(evaluateQueuingArray, LATENCY_PERCENTILE);
-                            instance.setServingTimePercentile(servingPercentileValue);
-                            instance.setQueuingTimePercentile(queuingPercentileValue);
+                    List<Double> servingLatencyStatistic = instance.getServing_latency();
+                    List<Double> queuingLatencyStatistic = instance.getQueuing_latency();
+                    double servingPercentileValue = 0;
+                    double queuingPercentileValue = 0;
+                    if (servingLatencyStatistic.size() != 0 && queuingLatencyStatistic.size() != 0) {
+                        Double statNum = BUDGET_ADJUST_INTERVAL * instance.getLoadProb();
+                        int statLength = servingLatencyStatistic.size();
+                        double[] evaluateServingArray = new double[statNum.intValue()];
+                        double[] evaluateQueuingArray = new double[statNum.intValue()];
+                        double totalQueuing = 0;
+                        double totalServing = 0;
+                        for (int i = 0; i < statNum.intValue(); i++) {
+                            evaluateServingArray[i] = servingLatencyStatistic.get(statLength - 1 - i).doubleValue();
+                            evaluateQueuingArray[i] = queuingLatencyStatistic.get(statLength - 1 - i).doubleValue();
+                            totalServing += servingLatencyStatistic.get(statLength - 1 - i).doubleValue();
+                            totalQueuing += queuingLatencyStatistic.get(statLength - 1 - i).doubleValue();
                         }
-                        double estimatedServingTime = servingPercentileValue * instance.getCurrentQueueLength();
-                        instance.setEstimatedServingTime(estimatedServingTime);
-                        LOG.info("the 99th serving time and estimated finish time is " + servingPercentileValue + " and " + estimatedServingTime);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    } catch (TException e) {
-                        e.printStackTrace();
+                        instance.setQueuingTimeAvg(totalQueuing / statNum.intValue());
+                        instance.setServingTimeAvg(totalServing / statNum.intValue());
+                        servingPercentileValue = percentile.evaluate(evaluateServingArray, LATENCY_PERCENTILE);
+                        queuingPercentileValue = percentile.evaluate(evaluateQueuingArray, LATENCY_PERCENTILE);
+                        instance.setServingTimePercentile(servingPercentileValue);
+                        instance.setQueuingTimePercentile(queuingPercentileValue);
                     }
                 }
                 serviceInstanceList.addAll(serviceMap.get(serviceType));
             }
-            // 3. sort the service instance based on the estimated serving time
-            Collections.sort(serviceInstanceList, new ServingTimeComparator());
-            BoostDecision decision = predictBoostDecision(serviceInstanceList.get(0));
-            relocatePowerBudget(serviceInstanceList);
+            // sort the service instance based on the 99th queuing latency
+            Collections.sort(serviceInstanceList, new ServingTimeComparator(LATENCY_TYPE));
+            if ((serviceInstanceList.get(0).getQueuingTimePercentile() - serviceInstanceList.get(serviceInstanceList.size() - 1).getQueuingTimePercentile()) > ADJUST_THRESHOLD) {
+                ServiceInstance slowestInstance = serviceInstanceList.get(0);
+                LOG.info("the slowest service instance is " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " with 99th queuing latency " + slowestInstance.getQueuingTimePercentile());
+                // predict the tail latency of increasing frequency and launching new service instance
+                BoostDecision decision = predictBoostDecision(slowestInstance);
+                serviceInstanceList.remove(0);
+                // relocate the power budget, if true perform the boosting decision
+                if (relocatePowerBudget(serviceInstanceList, decision.getRequiredPower())) {
+                    if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
+                        IPAService.Client client = null;
+                        double oldFreq = slowestInstance.getCurrentFrequncy();
+                        try {
+                            client = TClient.creatIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
+                            client.updatBudget(decision.getFrequency());
+                            slowestInstance.setCurrentFrequncy(decision.getFrequency());
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        } catch (TException e) {
+                            e.printStackTrace();
+                        }
+                        LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
+                    } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                        launchServiceInstance(slowestInstance);
+                    }
+                } else {
+                    LOG.info("recycling failed, not enough power budget to perform the stage boosting");
+                }
+            } else {
+                LOG.info("the service instances are already balanced, skip current adjusting interval");
+            }
             LOG.info("==================================================");
         }
 
         private BoostDecision predictBoostDecision(ServiceInstance instance) {
             BoostDecision decision = new BoostDecision();
+            Percentile percentile = new Percentile();
+            double tailLatencyFreq = 0;
+            double tailLatencyInstance = 0;
+            double requiredPowerInstance = 0;
+            double requiredPowerFreq = 0;
+            double speedup = 0;
+            /**
+             * 1. calculate the tail latency of launching a new service instance as well as the required power
+             * 2. assuming the new service instance would half the queuing time of the slowest instance but not changing the serving time
+             * 3. evaluating the frequency equaling the power of a new instance
+             * 4. calculate the tail latency of the whole service stage
+             */
+            // this is also the base power for increasing frequency
+            requiredPowerInstance = PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
+            int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy());
+            int index = originIndex + 1;
+            for (; index < freqRangeList.size(); index++) {
+                if ((PowerModel.getPowerPerFreq(freqRangeList.get(index)) - requiredPowerInstance) > requiredPowerInstance) {
+                    break;
+                }
+            }
+            if ((index - 1) > originIndex) {
+                requiredPowerFreq = PowerModel.getPowerPerFreq(freqRangeList.get(index - 1)) - requiredPowerInstance;
+                speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(index - 1));
+            } else {
+                LOG.info("the slowest service instance already running at maximum frequency");
+                tailLatencyFreq = Double.MAX_VALUE;
+                decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                decision.setRequiredPower(requiredPowerInstance);
+                return decision;
+            }
+            double[] totalLatencyFreq = new double[BUDGET_ADJUST_INTERVAL];
+            double[] totalLatencyInstance = new double[BUDGET_ADJUST_INTERVAL];
+            // iterate through the service instance list to predict the tail latency
+            int totalNum = 0;
+            for (ServiceInstance historyInstance : serviceMap.get(instance.getServiceType())) {
+                Double statNum = BUDGET_ADJUST_INTERVAL * historyInstance.getLoadProb();
+                List<Double> servingLatencyStatistic = historyInstance.getServing_latency();
+                List<Double> queuingLatencyStatistic = historyInstance.getQueuing_latency();
+                int statLength = servingLatencyStatistic.size();
+                for (int i = 0; i < statNum.intValue(); i++) {
+                    if (historyInstance.getHostPort().equals(instance.getHostPort())) {
+                        // frequency boosting
+                        totalLatencyFreq[totalNum] = (servingLatencyStatistic.get(statLength - 1 - i).doubleValue() + queuingLatencyStatistic.get(statLength - 1 - i).doubleValue()) * (1 - speedup);
+                        totalLatencyInstance[totalNum] = servingLatencyStatistic.get(statLength - 1 - i).doubleValue() + queuingLatencyStatistic.get(statLength - 1 - i).doubleValue() / 2.0;
+                        // instance boosting
+                    } else {
+                        totalLatencyFreq[totalNum] = servingLatencyStatistic.get(statLength - 1 - i).doubleValue() + queuingLatencyStatistic.get(statLength - 1 - i).doubleValue();
+                        totalLatencyInstance[totalNum] = servingLatencyStatistic.get(statLength - 1 - i).doubleValue() + queuingLatencyStatistic.get(statLength - 1 - i).doubleValue();
+                    }
+                    totalNum++;
+                }
+
+            }
+            tailLatencyFreq = percentile.evaluate(totalLatencyFreq, LATENCY_PERCENTILE);
+            tailLatencyInstance = percentile.evaluate(totalLatencyInstance, LATENCY_PERCENTILE);
+            if (tailLatencyFreq < tailLatencyInstance) {
+                LOG.info("stage boosting decision: frequency boosting " + " with tail latency " + tailLatencyFreq + " compared to " + tailLatencyInstance + " if launching new instance");
+                decision.setDecision(BoostDecision.FREQUENCY_BOOST);
+                decision.setFrequency(freqRangeList.get(index - 1));
+                decision.setRequiredPower(requiredPowerFreq);
+            } else {
+                LOG.info("stage boosting decision: instance boosting " + " with tail latency " + tailLatencyInstance + " compared to " + tailLatencyFreq + " if increasing the frequency");
+                decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                decision.setRequiredPower(requiredPowerInstance);
+            }
             // 1. calculate the tail latency of frequency boosting
             // a. using the speedup sheet to estimate the serving time speedup
             // b. reducing the 99th tail latency of both queuing and serving time
@@ -453,7 +549,8 @@ public class CommandCenter implements SchedulerService.Iface {
          *
          * @param serviceInstanceList
          */
-        private void relocatePowerBudget(List<ServiceInstance> serviceInstanceList) {
+        private boolean relocatePowerBudget(List<ServiceInstance> serviceInstanceList, double requiredPower) {
+            boolean success = false;
             LOG.info("start to relocate the power budget...");
             if (serviceInstanceList.size() == 1) {
                 ServiceInstance instance = serviceInstanceList.get(0);
@@ -561,16 +658,15 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                 }
             }
+            return success;
         }
 
         /**
          * Invoke the node manager service to launch new service instances.
          *
-         * @param serviceType
-         * @param queuingTimePercentile
-         * @param defaultFrequency
+         * @param instance
          */
-        private void launchServiceInstance(String serviceType, double queuingTimePercentile, double defaultFrequency, double loadProb) {
+        private void launchServiceInstance(ServiceInstance instance) {
 //            ServiceInstance instance = new ServiceInstance();
 //            instance.setServiceType(serviceType);
 //            instance.setQueuingTimePercentile(queuingTimePercentile);
@@ -592,17 +688,19 @@ public class CommandCenter implements SchedulerService.Iface {
 //            } else {
 //                LOG.info("The node manager has run out of service instance " + serviceType);
 //            }
+            double loadProb = instance.getLoadProb() / 2.0;
+            instance.setLoadProb(loadProb);
+            String serviceType = instance.getServiceType();
             if (candidateMap.get(serviceType).size() != 0) {
                 List<ServiceInstance> instanceList = candidateMap.get(serviceType);
-                ServiceInstance instance = instanceList.get(0);
+                ServiceInstance candidateInstance = instanceList.get(0);
                 instanceList.remove(0);
-                instance.setServiceType(serviceType);
-                instance.setQueuingTimePercentile(queuingTimePercentile);
-                instance.setCurrentFrequncy(defaultFrequency);
-                instance.setLoadProb(loadProb);
+                candidateInstance.setServiceType(serviceType);
+                candidateInstance.setCurrentFrequncy(instance.getCurrentFrequncy());
+                candidateInstance.setLoadProb(loadProb);
                 serviceMap.get(serviceType).add(instance);
-                POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - PowerModel.getPowerPerFreq(defaultFrequency)));
                 LOG.info("Launching new service instance " + serviceType + " on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " with frequency " + instance.getCurrentFrequncy() + "GHz");
+                LOG.info("updating the load probability of the parent service instance to " + loadProb);
             } else {
                 LOG.info("The node manager has run out of service instance " + serviceType);
             }
@@ -668,6 +766,12 @@ public class CommandCenter implements SchedulerService.Iface {
      *
      */
     private class ServingTimeComparator implements Comparator<ServiceInstance> {
+        private String latencyType;
+
+        public ServingTimeComparator(String latencyType) {
+            this.latencyType = latencyType;
+        }
+
         /**
          * @param instance1
          * @param instance2
@@ -675,7 +779,13 @@ public class CommandCenter implements SchedulerService.Iface {
          */
         @Override
         public int compare(ServiceInstance instance1, ServiceInstance instance2) {
-            return Double.compare(instance2.getEstimatedServingTime(), instance1.getEstimatedServingTime());
+            int compareResult = 0;
+            if (latencyType.equalsIgnoreCase("tail")) {
+                compareResult = Double.compare(instance2.getQueuingTimePercentile(), instance1.getQueuingTimePercentile());
+            } else if (latencyType.equalsIgnoreCase("average")) {
+                compareResult = Double.compare(instance2.getQueuingTimeAvg(), instance1.getQueuingTimeAvg());
+            }
+            return compareResult;
         }
     }
 }

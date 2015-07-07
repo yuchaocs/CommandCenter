@@ -8,6 +8,8 @@ public class BoostDecision {
     public static final String INSTANCE_BOOST = "instance";
     private String decision;
     private double requiredPower;
+    private double loadProb;
+    private double frequency;
 
     public String getDecision() {
         return decision;
@@ -23,5 +25,21 @@ public class BoostDecision {
 
     public void setRequiredPower(double requiredPower) {
         this.requiredPower = requiredPower;
+    }
+
+    public double getLoadProb() {
+        return loadProb;
+    }
+
+    public double getFrequency() {
+        return frequency;
+    }
+
+    public void setLoadProb(double loadProb) {
+        this.loadProb = loadProb;
+    }
+
+    public void setFrequency(double frequency) {
+        this.frequency = frequency;
     }
 }

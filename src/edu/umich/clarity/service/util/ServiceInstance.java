@@ -19,6 +19,8 @@ public class ServiceInstance {
     private double estimatedServingTime;
     private double loadProb;
     private double currentFrequncy;
+    private double servingTimeAvg;
+    private double queuingTimeAvg;
 
     public ServiceInstance() {
         this.queuing_latency = new LinkedList<Double>();
@@ -104,5 +106,21 @@ public class ServiceInstance {
 
     public void setCurrentFrequncy(double currentFrequncy) {
         this.currentFrequncy = currentFrequncy;
+    }
+
+    public double getQueuingTimeAvg() {
+        return queuingTimeAvg;
+    }
+
+    public double getServingTimeAvg() {
+        return servingTimeAvg;
+    }
+
+    public void setServingTimeAvg(double servingTimeAvg) {
+        this.servingTimeAvg = servingTimeAvg;
+    }
+
+    public void setQueuingTimeAvg(double queuingTimeAvg) {
+        this.queuingTimeAvg = queuingTimeAvg;
     }
 }
