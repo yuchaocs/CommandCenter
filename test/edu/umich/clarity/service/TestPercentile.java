@@ -5,6 +5,9 @@ import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 
 import java.io.FileReader;
 import java.io.IOException;
+import java.text.DecimalFormat;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * Created by hailong on 7/6/15.
@@ -28,6 +31,14 @@ public class TestPercentile {
             }
         } catch (IOException ex) {
 
+        }
+        List<Double> freqRangeList = new LinkedList<Double>();
+        DecimalFormat dFormat = new DecimalFormat("#.#");
+        for (double i = 1.2; i < 2.5; i += 0.1) {
+            freqRangeList.add(Double.valueOf((dFormat.format(i))));
+        }
+        for (Double freq : freqRangeList) {
+            System.out.println(freq);
         }
     }
 }
