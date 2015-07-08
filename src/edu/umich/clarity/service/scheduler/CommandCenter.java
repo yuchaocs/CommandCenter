@@ -33,9 +33,9 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final String SCHEDULER_IP = "localhost";
     private static final int SCHEDULER_PORT = 8888;
     // the interval to adjust power budget (per queries)
-    private static final int BUDGET_ADJUST_INTERVAL = 10;
+    private static final int ADJUST_BUDGET_INTERVAL = 10;
     // the interval to withdraw the idle service instances (per queries)
-    private static final int RELINQUISH_ADJUST_INTERVAL = 100;
+    private static final int WITHDRAW_BUDGET_INTERVAL = 108;
     // best effort or guarantee
     private static final long LATENCY_BUDGET = 300;
     private static final List<String> sirius_workflow = new LinkedList<String>();
@@ -55,8 +55,8 @@ public class CommandCenter implements SchedulerService.Iface {
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
-    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
+    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 //    private static final String[] FREQ_RANGE =
 //            {
 //                    "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9", "2.0", "2.1", "2.2", "2.3", "2.4"
@@ -135,7 +135,7 @@ public class CommandCenter implements SchedulerService.Iface {
 
         LOG.info("the global power budget is set to " + POWER_BUDGET.get().doubleValue());
         LOG.info("current workflow within command center is " + workflow);
-        //LOG.info("launching the power budget managing thread with adjusting interval per " + BUDGET_ADJUST_INTERVAL + " queries and recycling interval per " + RELINQUISH_ADJUST_INTERVAL + " queries");
+        //LOG.info("launching the power budget managing thread with adjusting interval per " + ADJUST_BUDGET_INTERVAL + " queries and recycling interval per " + WITHDRAW_BUDGET_INTERVAL + " queries");
         if (!VANILLA_MODE)
             new Thread(new powerBudgetAdjustRunnable()).start();
         // new Thread(new budgetAdjusterRunnable()).start();
@@ -174,7 +174,7 @@ public class CommandCenter implements SchedulerService.Iface {
     }
 
     /**
-     * Based on the 99th percentile queuing time distribution of each service instance to balance the queue length.
+     * The load is distributed according to the probability of each service instance
      *
      * @param service_list the candidate list of particular service type
      * @return the chosen service instance
@@ -183,7 +183,6 @@ public class CommandCenter implements SchedulerService.Iface {
         THostPort hostPort = null;
         // Collections.sort(service_list, new LoadProbabilityComparator());
         List<Double> thresHold = new LinkedList<Double>();
-        double totalProb = 0;
         for (int i = 0; i < service_list.size(); i++) {
             ServiceInstance instance = service_list.get(i);
             double sum = 0;
@@ -191,11 +190,10 @@ public class CommandCenter implements SchedulerService.Iface {
                 sum += service_list.get(j).getLoadProb();
             }
             thresHold.add(sum);
-            totalProb += instance.getLoadProb();
         }
 
         Random rand = new Random();
-        double index = rand.nextDouble() * totalProb;
+        double index = rand.nextDouble();
 
         for (int i = 0; i < thresHold.size(); i++) {
             if (index < thresHold.get(i)) {
@@ -221,27 +219,33 @@ public class CommandCenter implements SchedulerService.Iface {
         serviceInstance.setHostPort(hostPort);
         serviceInstance.setServiceType(appName);
         serviceInstance.setCurrentFrequncy(message.getBudget());
-        // regular instances, allow to register
-        if (!candidatePortList.contains(hostPort.getPort())) {
-            if (serviceMap.containsKey(appName)) {
-                serviceMap.get(appName).add(serviceInstance);
-            } else {
-                List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
-                serviceInstanceList.add(serviceInstance);
-                serviceMap.put(appName, serviceInstanceList);
+        synchronized (this) {
+            // regular instances, allow to register
+            if (!candidatePortList.contains(hostPort.getPort())) {
+                if (serviceMap.containsKey(appName)) {
+                    double loadProb = 1 / (serviceMap.get(appName).size() + 1);
+                    serviceMap.get(appName).add(serviceInstance);
+                    for (ServiceInstance instance : serviceMap.get(appName)) {
+                        instance.setLoadProb(loadProb);
+                    }
+                } else {
+                    List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
+                    serviceInstanceList.add(serviceInstance);
+                    serviceMap.put(appName, serviceInstanceList);
+                }
+                POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - PowerModel.getPowerPerFreq(message.getBudget())));
+                LOG.info("putting it into the live instance list (current size for " + appName + ": " + serviceMap.get(appName).size() + ")");
+                LOG.info("the current available power budget is " + POWER_BUDGET.get().doubleValue());
+            } else { // candidate instances, put into the candidate list
+                if (candidateMap.containsKey(appName)) {
+                    candidateMap.get(appName).add(serviceInstance);
+                } else {
+                    List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
+                    serviceInstanceList.add(serviceInstance);
+                    candidateMap.put(appName, serviceInstanceList);
+                }
+                LOG.info("putting it into the candidate instance list (current size for " + appName + ": " + candidateMap.get(appName).size() + ")");
             }
-            POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - PowerModel.getPowerPerFreq(message.getBudget())));
-            LOG.info("putting it into the live instance list (current size for " + appName + ": " + serviceMap.get(appName).size() + ")");
-            LOG.info("the current available power budget is " + POWER_BUDGET.get().doubleValue());
-        } else { // candidate instances, put into the candidate list
-            if (candidateMap.containsKey(appName)) {
-                candidateMap.get(appName).add(serviceInstance);
-            } else {
-                List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
-                serviceInstanceList.add(serviceInstance);
-                candidateMap.put(appName, serviceInstanceList);
-            }
-            LOG.info("putting it into the candidate instance list (current size for " + appName + ": " + candidateMap.get(appName).size() + ")");
         }
     }
 
@@ -321,11 +325,11 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                     removed_queries += 1;
                     LOG.info(removed_queries + " query latency statistics are returned to command center");
-                    if (removed_queries % BUDGET_ADJUST_INTERVAL == 0) {
+                    if (removed_queries % ADJUST_BUDGET_INTERVAL == 0) {
                         adjustPowerBudget();
                         // loadBalance();
                     }
-                    if (removed_queries % RELINQUISH_ADJUST_INTERVAL == 0) {
+                    if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
                         relinquishServiceInstance();
                     }
                 } catch (InterruptedException e) {
@@ -335,12 +339,12 @@ public class CommandCenter implements SchedulerService.Iface {
         }
 
         /**
-         * Every RELINQUISH_ADJUST_INTERVAL queries, if the queuing time of a service instance keeps zero and there are multiple instances of that service type available, stop one service instance and relinquish the power budget.
+         * Every WITHDRAW_BUDGET_INTERVAL queries, if the queuing time of a service instance keeps zero and there are multiple instances of that service type available, stop one service instance and relinquish the power budget.
          */
         private void relinquishServiceInstance() {
             LOG.info("==================================================");
             LOG.info("start to recycle the service instances...");
-            LOG.info("scanning the queuing time of the past " + RELINQUISH_ADJUST_INTERVAL + " queries");
+            LOG.info("scanning the queuing time of the past " + WITHDRAW_BUDGET_INTERVAL + " queries");
             Map<String, List<Integer>> relinquishMap = new HashMap<String, List<Integer>>();
             for (String serviceType : serviceMap.keySet()) {
                 List<ServiceInstance> serviceInstanceList = serviceMap.get(serviceType);
@@ -351,7 +355,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         double queuingTime = 0;
                         int statisticLength = serviceInstance.getQueuing_latency().size();
                         if (statisticLength != 0) {
-                            for (int index = 0; index < RELINQUISH_ADJUST_INTERVAL; index++) {
+                            for (int index = 0; index < statisticLength && index < WITHDRAW_BUDGET_INTERVAL / serviceInstanceList.size(); index++) {
                                 queuingTime += serviceInstance.getQueuing_latency().get(statisticLength - 1 - index);
                                 if (queuingTime > 0) {
                                     break;
@@ -375,6 +379,9 @@ public class CommandCenter implements SchedulerService.Iface {
                         POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() + PowerModel.getPowerPerFreq(allocatedFreq)));
                         serviceInstanceList.remove(index);
                         // instead of shutting down, put the recycled service instance into the candidate list
+                        Collections.sort(serviceInstanceList, new ServingTimeComparator(LATENCY_TYPE));
+                        ServiceInstance fastestInstance = serviceInstanceList.get(serviceInstanceList.size() - 1);
+                        fastestInstance.setLoadProb(instance.getLoadProb() + fastestInstance.getLoadProb());
                         instance.getQueuing_latency().clear();
                         instance.getServing_latency().clear();
                         candidateMap.get(serviceType).add(instance);
@@ -410,7 +417,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     double servingPercentileValue = 0;
                     double queuingPercentileValue = 0;
                     if (servingLatencyStatistic.size() != 0 && queuingLatencyStatistic.size() != 0) {
-                        Double statNum = BUDGET_ADJUST_INTERVAL * instance.getLoadProb();
+                        Double statNum = ADJUST_BUDGET_INTERVAL * instance.getLoadProb();
                         int statLength = servingLatencyStatistic.size();
                         double[] evaluateServingArray = new double[statNum.intValue()];
                         double[] evaluateQueuingArray = new double[statNum.intValue()];
@@ -500,12 +507,12 @@ public class CommandCenter implements SchedulerService.Iface {
                 decision.setRequiredPower(requiredPowerInstance);
                 return decision;
             }
-            double[] totalLatencyFreq = new double[BUDGET_ADJUST_INTERVAL];
-            double[] totalLatencyInstance = new double[BUDGET_ADJUST_INTERVAL];
+            double[] totalLatencyFreq = new double[ADJUST_BUDGET_INTERVAL];
+            double[] totalLatencyInstance = new double[ADJUST_BUDGET_INTERVAL];
             // iterate through the service instance list to predict the tail latency
             int totalNum = 0;
             for (ServiceInstance historyInstance : serviceMap.get(instance.getServiceType())) {
-                Double statNum = BUDGET_ADJUST_INTERVAL * historyInstance.getLoadProb();
+                Double statNum = ADJUST_BUDGET_INTERVAL * historyInstance.getLoadProb();
                 List<Double> servingLatencyStatistic = historyInstance.getServing_latency();
                 List<Double> queuingLatencyStatistic = historyInstance.getQueuing_latency();
                 int statLength = servingLatencyStatistic.size();
@@ -548,115 +555,71 @@ public class CommandCenter implements SchedulerService.Iface {
          * Recursively relocating the power budget across the service instances.
          *
          * @param serviceInstanceList
+         * @param requiredPower
          */
         private boolean relocatePowerBudget(List<ServiceInstance> serviceInstanceList, double requiredPower) {
             boolean success = false;
             LOG.info("start to relocate the power budget...");
-            if (serviceInstanceList.size() == 1) {
-                ServiceInstance instance = serviceInstanceList.get(0);
-                if (POWER_BUDGET.get().doubleValue() > PowerModel.getPowerPerFreq(PowerModel.F0)) {
-                    launchServiceInstance(instance.getServiceType(), instance.getQueuingTimePercentile(), DEFAULT_FREQUENCY, instance.getLoadProb());
+            if (serviceInstanceList.size() != 0) {
+                if (POWER_BUDGET.get().doubleValue() >= requiredPower) {
+                    POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - requiredPower));
+                    LOG.info("global power budget is enough to perform the stage boosting, current global power budget is " + POWER_BUDGET.get().doubleValue());
+                    success = true;
                 } else {
-                    if (instance.getCurrentFrequncy() != PowerModel.FN) {
-                        double currentFreq = instance.getCurrentFrequncy();
-                        double nextLevelPower = PowerModel.getPowerPerFreq(currentFreq + 0.1);
-                        if (nextLevelPower < POWER_BUDGET.get().doubleValue()) {
-                            IPAService.Client client = null;
-                            try {
-                                client = TClient.creatIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
-                                client.updatBudget(currentFreq + 0.1);
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            } catch (TException e) {
-                                e.printStackTrace();
+                    LOG.info("recycling power budget from existing service instances");
+                    Map<ServiceInstance, Double> adjustInstance = new HashMap<ServiceInstance, Double>();
+                    double sum = 0;
+                    for (int i = (serviceInstanceList.size() - 1); i > -1; i--) {
+                        ServiceInstance fastestInstance = serviceInstanceList.get(i);
+                        double fastFreq = fastestInstance.getCurrentFrequncy();
+                        double fastPower = PowerModel.getPowerPerFreq(fastFreq);
+                        for (double j = (fastFreq - 0.1); j > (PowerModel.F0 - 0.1); j -= 0.1) {
+                            if (sum + (fastPower - PowerModel.getPowerPerFreq(j) + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
+                                sum += fastPower - PowerModel.getPowerPerFreq(j);
+                                adjustInstance.put(fastestInstance, j);
+                                break;
                             }
-                            instance.setCurrentFrequncy(currentFreq + 0.1);
-                            POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - nextLevelPower));
-                            LOG.info("update service " + instance.getServiceType() + " instance@" + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " frequency to " + instance.getServiceType());
-                            LOG.info("current global available power budget is " + POWER_BUDGET.get().doubleValue());
+                            if (j == PowerModel.F0) {
+                                sum += fastPower - PowerModel.getPowerPerFreq(j);
+                                adjustInstance.put(fastestInstance, PowerModel.F0);
+                            }
+                        }
+                        if ((sum + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
+                            break;
                         }
                     }
+                    if ((sum + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
+                        if (sum < requiredPower) {
+                            POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - (requiredPower - sum)));
+                        }
+                    } else {
+                        LOG.info("not enough power budget to recycle, keep the current power budget unadjusted...");
+                        adjustInstance.clear();
+                        return success;
+                    }
+                    // update the global serviceMap and notify the service instance to update their power budget
+                    for (ServiceInstance
+                            keyInstance : adjustInstance.keySet()) {
+                        List<ServiceInstance> valueList = serviceMap.get(keyInstance.getServiceType());
+                        for (ServiceInstance value : valueList) {
+                            if (value.getHostPort().equals(keyInstance.getHostPort())) {
+                                value.setCurrentFrequncy(adjustInstance.get(keyInstance));
+                                try {
+                                    IPAService.Client client = TClient.creatIPAClient(keyInstance.getHostPort().getIp(), keyInstance.getHostPort().getPort());
+                                    client.updatBudget(adjustInstance.get(keyInstance));
+                                    LOG.info("the frequency of service instance running on " + keyInstance.getHostPort().getIp() + ":" + keyInstance.getHostPort().getPort() + " has been decreased to " + adjustInstance.get(keyInstance));
+                                } catch (IOException ex) {
+                                    ex.printStackTrace();
+                                } catch (TException ex) {
+                                    ex.printStackTrace();
+                                }
+                            }
+                        }
+                    }
+                    success = true;
                 }
             } else {
-                double longestServingTime = serviceInstanceList.get(0).getEstimatedServingTime();
-                double shortestServingTime = serviceInstanceList.get(serviceInstanceList.size() - 1).getEstimatedServingTime();
-                if ((longestServingTime - shortestServingTime) < ADJUST_THRESHOLD) { // if the serving time variation is within the adjust threshold, then skip current adjust interval
-                    LOG.info("the longest estimated serving time is " + longestServingTime + " and the shortest estimated serving time is " + shortestServingTime);
-                    LOG.info("the difference is less than the ajust threshold " + ADJUST_THRESHOLD + ", skip current power budget adjust interval");
-                } else {
-                    // 4.whenever there are enough power budget left, launch a new instance of the slowest service
-                    if (POWER_BUDGET.get().doubleValue() > PowerModel.getPowerPerFreq(PowerModel.F0)) {
-                        LOG.info("the current global power budget " + POWER_BUDGET.get().doubleValue() + " is enough to launch a new service instance");
-                        launchServiceInstance(serviceInstanceList.get(0).getServiceType(), serviceInstanceList.get(0).getQueuingTimePercentile(), DEFAULT_FREQUENCY, serviceInstanceList.get(0).getLoadProb());
-                    } else { // 5. recycle the power budget from the fastest service instance and rellocate to the slowest service instance. The power budget should be enough to allow one level frequency increase.
-                        LOG.info("the current global power budget " + POWER_BUDGET.get().doubleValue() + " is not enough to launch a new service instance, " + "trying to recycle the power budget...");
-                        ServiceInstance instance = serviceInstanceList.get(0);
-                        double currentFreq = instance.getCurrentFrequncy();
-                        double requiredPower = PowerModel.getPowerPerFreq(currentFreq + 0.1) - PowerModel.getPowerPerFreq(currentFreq);
-                        LOG.info("trying to increase the frequency of the slowest service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
-                        LOG.info("the required power is " + requiredPower);
-                        if (currentFreq == PowerModel.FN) {
-                            serviceInstanceList.remove(0);
-                            LOG.info("the slowest service instance is already at maximum frequency, trying to adjust the next slowest service instance");
-                            relocatePowerBudget(serviceInstanceList);
-                        } else {
-                            Map<ServiceInstance, Double> adjustInstance = new HashMap<ServiceInstance, Double>();
-                            if (requiredPower <= POWER_BUDGET.get().doubleValue()) {
-                                adjustInstance.put(instance, currentFreq + 0.1);
-                                POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - requiredPower));
-                                LOG.info("the available global power budget is enough to increase the frequency of the service instance");
-                            } else {
-                                double sum = 0;
-                                for (int i = (serviceInstanceList.size() - 1); i > 0; i--) {
-                                    ServiceInstance fastestInstance = serviceInstanceList.get(i);
-                                    double fastFreq = fastestInstance.getCurrentFrequncy();
-                                    double fastPower = PowerModel.getPowerPerFreq(fastFreq);
-                                    for (double j = (fastFreq - 0.1); j > (PowerModel.F0 - 0.1); j -= 0.1) {
-                                        if (sum + (fastPower - PowerModel.getPowerPerFreq(j) + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
-                                            sum += fastPower - PowerModel.getPowerPerFreq(j);
-                                            adjustInstance.put(fastestInstance, j);
-                                            break;
-                                        }
-                                        if (j == PowerModel.F0) {
-                                            sum += fastPower - PowerModel.getPowerPerFreq(j);
-                                            adjustInstance.put(fastestInstance, PowerModel.F0);
-                                        }
-                                    }
-                                    if ((sum + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
-                                        break;
-                                    }
-                                }
-                                if ((sum + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
-                                    if (sum < requiredPower) {
-                                        POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - (requiredPower - sum)));
-                                    }
-                                } else {
-                                    LOG.info("not enough power budget to recycle, keep the current power budget unadjusted...");
-                                    adjustInstance.clear();
-                                }
-                            }
-                            // update the global serviceMap and notify the service instance to update their power budget
-                            for (ServiceInstance
-                                    keyInstance : adjustInstance.keySet()) {
-                                List<ServiceInstance> valueList = serviceMap.get(keyInstance.getServiceType());
-                                for (ServiceInstance value : valueList) {
-                                    if (value.getHostPort().equals(keyInstance.getHostPort())) {
-                                        value.setCurrentFrequncy(adjustInstance.get(keyInstance));
-                                        try {
-                                            IPAService.Client client = TClient.creatIPAClient(keyInstance.getHostPort().getIp(), keyInstance.getHostPort().getPort());
-                                            client.updatBudget(adjustInstance.get(keyInstance));
-                                            LOG.info("the frequency of service instance running on " + keyInstance.getHostPort().getIp() + ":" + keyInstance.getHostPort().getPort() + " has been decreased to " + adjustInstance.get(keyInstance));
-                                        } catch (IOException ex) {
-                                            ex.printStackTrace();
-                                        } catch (TException ex) {
-                                            ex.printStackTrace();
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                LOG.info("no service instance available to recycle");
             }
             return success;
         }
