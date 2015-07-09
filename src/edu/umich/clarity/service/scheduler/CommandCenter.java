@@ -40,7 +40,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final long LATENCY_BUDGET = 300;
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
-    private static final String[] LATENCY_FILE_HEADER = {"asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
+    private static final String[] LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
     // the tail latency target
     private static final double LATENCY_PERCENTILE = 99;
     // latency threshold between instances before stopping power adjustment
@@ -262,6 +262,7 @@ public class CommandCenter implements SchedulerService.Iface {
             ArrayList<String> csvEntry = new ArrayList<String>();
             long total_queuing = 0;
             long total_serving = 0;
+            csvEntry.add(query.getName());
             for (int i = 0; i < query.getTimestamp().size(); i++) {
                 LatencySpec latencySpec = query.getTimestamp().get(i);
                 long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();

@@ -1,16 +1,18 @@
 package edu.umich.clarity.service;
 
+import com.opencsv.CSVReader;
+import com.opencsv.CSVWriter;
 import edu.umich.clarity.service.util.TClient;
 import edu.umich.clarity.thrift.*;
 import org.apache.commons.math3.distribution.PoissonDistribution;
 import org.apache.thrift.TException;
 
 import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 /**
  * Created by hailong on 6/29/15.
@@ -18,42 +20,71 @@ import java.util.Random;
 public class StressClient {
     public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
     private static final double mean = 1000;
-    private static final int num_client = 500;
+    private static final int num_client = 1000;
+    private static final String SAMPLE_FILE = "poisson_sample_1_1000.csv";
 
     public static void main(String[] args) {
         StressClient client = new StressClient();
         // client.genPoissonLoad(mean, num_client);
-        client.genPoissonLoad();
+        // client.genPoissonLoad();
+        // client.stablizePoissonSamples(mean, num_client);
+        client.genPoissonLoad(500);
     }
 
     /**
      * Generate the load that follows Poisson distribution.
      */
-    public void genPoissonLoad() {
+    public void genPoissonLoad(int num_client) {
         String NEXT_STAGE = "asr";
         String SCHEDULER_IP = "localhost";
         int SCHEDULER_PORT = 8888;
-        PoissonDistribution poi_dist = new PoissonDistribution(this.mean);
-        for (int i = 0; i < this.num_client; i++) {
-            try {
-                SchedulerService.Client schedulerClient = TClient.creatSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
-                THostPort hostPort = schedulerClient.consultAddress(NEXT_STAGE);
-                IPAService.Client serviceClient = TClient.creatIPAClient(hostPort.getIp(), hostPort.getPort());
-                QuerySpec query = new QuerySpec();
-                query.setName(Integer.toString(i));
-                query.setBudget(30000);
-                List<LatencySpec> timestamp = new LinkedList<LatencySpec>();
-                query.setTimestamp(timestamp);
-                serviceClient.submitQuery(query);
-                System.out.println("Sending query " + i);
-                Thread.sleep(Math.round(poi_dist.sample()));
-            } catch (TException e) {
-                e.printStackTrace();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
+        List sampleEntries = null;
+        try {
+            CSVReader reader = new CSVReader(new FileReader(SAMPLE_FILE), ',');
+            sampleEntries = reader.readAll();
+        } catch (IOException ex) {
+
+        }
+        for (Object entry : sampleEntries) {
+            String[] sample = (String[]) entry;
+            int evaluateLength = sample.length > num_client ? num_client : sample.length;
+            for (int i = 0; i < evaluateLength; i++) {
+                try {
+                    SchedulerService.Client schedulerClient = TClient.creatSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
+                    THostPort hostPort = schedulerClient.consultAddress(NEXT_STAGE);
+                    IPAService.Client serviceClient = TClient.creatIPAClient(hostPort.getIp(), hostPort.getPort());
+                    QuerySpec query = new QuerySpec();
+                    query.setName(Integer.toString(i));
+                    query.setBudget(30000);
+                    List<LatencySpec> timestamp = new LinkedList<LatencySpec>();
+                    query.setTimestamp(timestamp);
+                    serviceClient.submitQuery(query);
+                    System.out.println("Sending query " + i);
+                    Thread.sleep(Integer.valueOf(sample[i]));
+                } catch (TException e) {
+                    e.printStackTrace();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
+        }
+    }
+
+    private void stablizePoissonSamples(double mean, int sampleNum) {
+        PoissonDistribution poi_dist = new PoissonDistribution(mean);
+        try {
+            CSVWriter sampleWriter = new CSVWriter(new FileWriter(SAMPLE_FILE), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            ArrayList<String> csvEntry = new ArrayList<String>();
+            for (int i = 0; i < sampleNum; i++) {
+                csvEntry.add(poi_dist.sample() + "");
+            }
+            sampleWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            sampleWriter.flush();
+            sampleWriter.close();
+        } catch (IOException ex) {
+
         }
     }
 
