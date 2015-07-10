@@ -6,6 +6,7 @@ import edu.umich.clarity.service.util.TClient;
 import edu.umich.clarity.thrift.*;
 import org.apache.commons.math3.distribution.PoissonDistribution;
 import org.apache.thrift.TException;
+import sun.net.TelnetProtocolException;
 
 import java.io.File;
 import java.io.FileReader;
@@ -13,22 +14,48 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * Created by hailong on 6/29/15.
  */
 public class StressClient {
     public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
-    private static final double mean = 1000;
+    private static final double mean = 800;
     private static final int num_client = 1000;
-    private static final String SAMPLE_FILE = "poisson_sample_1_1000.csv";
+    private static final String SAMPLE_FILE = "poisson_sample_.8_1000.csv";
+    private static final String SCHEDULER_IP = "localhost";
+    private static final int SCHEDULER_PORT = 8888;
+    private static final int WARMUP_COUNT = 20;
 
     public static void main(String[] args) {
         StressClient client = new StressClient();
-        // client.genPoissonLoad(mean, num_client);
-        // client.genPoissonLoad();
-        // client.stablizePoissonSamples(mean, num_client);
-        client.genPoissonLoad(500);
+//        client.genPoissonLoad(mean, num_client);
+//        client.genPoissonLoad();
+//        client.stablizePoissonSamples(mean, num_client);
+        System.out.println("start to warm up the services...");
+        client.genPoissonLoad(WARMUP_COUNT);
+        SchedulerService.Client schedulerClient = null;
+        try {
+            TClient clientDelegate = new TClient();
+            schedulerClient = clientDelegate.createSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
+            int finishedQueries = 0;
+            while ((finishedQueries = schedulerClient.warmupCount()) != WARMUP_COUNT) {
+                System.out.println("The number of warmed up queries is " + finishedQueries + ", sleep for 2s to check again");
+                Thread.sleep(2000);
+            }
+            clientDelegate.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (InterruptedException ex) {
+
+        } catch (TException ex) {
+
+        }
+        System.out.println("start to evaluate the tail latency...");
+        //TClient.close();
+        client.genPoissonLoad(num_client);
     }
 
     /**
@@ -36,8 +63,6 @@ public class StressClient {
      */
     public void genPoissonLoad(int num_client) {
         String NEXT_STAGE = "asr";
-        String SCHEDULER_IP = "localhost";
-        int SCHEDULER_PORT = 8888;
         List sampleEntries = null;
         try {
             CSVReader reader = new CSVReader(new FileReader(SAMPLE_FILE), ',');
@@ -50,15 +75,19 @@ public class StressClient {
             int evaluateLength = sample.length > num_client ? num_client : sample.length;
             for (int i = 0; i < evaluateLength; i++) {
                 try {
-                    SchedulerService.Client schedulerClient = TClient.creatSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
+                    TClient clientDelegate = new TClient();
+                    SchedulerService.Client schedulerClient = clientDelegate.createSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
                     THostPort hostPort = schedulerClient.consultAddress(NEXT_STAGE);
-                    IPAService.Client serviceClient = TClient.creatIPAClient(hostPort.getIp(), hostPort.getPort());
+                    clientDelegate.close();
+                    clientDelegate = new TClient();
+                    IPAService.Client serviceClient = clientDelegate.createIPAClient(hostPort.getIp(), hostPort.getPort());
                     QuerySpec query = new QuerySpec();
                     query.setName(Integer.toString(i));
                     query.setBudget(30000);
                     List<LatencySpec> timestamp = new LinkedList<LatencySpec>();
                     query.setTimestamp(timestamp);
                     serviceClient.submitQuery(query);
+                    clientDelegate.close();
                     System.out.println("Sending query " + i);
                     Thread.sleep(Integer.valueOf(sample[i]));
                 } catch (TException e) {
@@ -105,8 +134,6 @@ public class StressClient {
         private static final String NEXT_STAGE = "asr";
         private static final String SCHEDULER_IP = "localhost";
         private static final int SCHEDULER_PORT = 8888;
-        private IPAService.Client serviceClient;
-        private SchedulerService.Client schedulerClient;
         private double nap_time;
         private File[] audioFiles;
         private String name;
@@ -116,18 +143,17 @@ public class StressClient {
             this.name = name;
             File audioDir = new File(AUDIO_PATH);
             this.audioFiles = audioDir.listFiles();
-            try {
-                schedulerClient = TClient.creatSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
 
         @Override
         public void run() {
             try {
+                TClient clientDelegate = new TClient();
+                SchedulerService.Client schedulerClient = clientDelegate.createSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
                 THostPort hostPort = schedulerClient.consultAddress(NEXT_STAGE);
-                serviceClient = TClient.creatIPAClient(hostPort.getIp(), hostPort.getPort());
+                clientDelegate.close();
+                clientDelegate = new TClient();
+                IPAService.Client serviceClient = clientDelegate.createIPAClient(hostPort.getIp(), hostPort.getPort());
                 QuerySpec query = new QuerySpec();
                 query.setName(this.name);
                 query.setBudget(30000);
@@ -139,6 +165,7 @@ public class StressClient {
                 Thread.sleep(Math.round(nap_time));
                 System.out.println("Sending intput file " + audioFiles[randIndex].getName());
                 serviceClient.submitQuery(query);
+                clientDelegate.close();
             } catch (IOException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();

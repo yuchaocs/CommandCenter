@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -56,6 +57,8 @@ public class CommandCenter implements SchedulerService.Iface {
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
+    private static final int WARMUP_COUNT = 20;
+    private static AtomicInteger warmupCount = new AtomicInteger(0);
 
     /**
      * @param args
@@ -272,17 +275,19 @@ public class CommandCenter implements SchedulerService.Iface {
                 csvEntry.add("" + queuing_time);
                 csvEntry.add("" + serving_time);
                 csvEntry.add("" + latencySpec.getInstance_id());
-                LOG.info("Query: queuing time " + queuing_time
+                LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
                         + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
             }
-            LOG.info("Query: total queuing "
+            LOG.info("Query " + query.getName() + ": total queuing "
                     + total_queuing + "ms" + " total serving " + total_serving
                     + "ms" + " at all stages with total latency "
                     + (total_queuing + total_serving) + "ms");
             csvEntry.add("" + total_queuing);
             csvEntry.add("" + total_serving);
-            latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-            latencyWriter.flush();
+            if (warmupCount.incrementAndGet() > WARMUP_COUNT) {
+                latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                latencyWriter.flush();
+            }
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -455,8 +460,10 @@ public class CommandCenter implements SchedulerService.Iface {
                         IPAService.Client client = null;
                         double oldFreq = slowestInstance.getCurrentFrequncy();
                         try {
-                            client = TClient.creatIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
+                            TClient clientDelegate = new TClient();
+                            client = clientDelegate.createIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
                             client.updatBudget(decision.getFrequency());
+                            clientDelegate.close();
                             slowestInstance.setCurrentFrequncy(decision.getFrequency());
                         } catch (IOException e) {
                             e.printStackTrace();
@@ -618,8 +625,10 @@ public class CommandCenter implements SchedulerService.Iface {
                         double oldFreq = keyInstance.getCurrentFrequncy();
                         keyInstance.setCurrentFrequncy(adjustInstance.get(keyInstance));
                         try {
-                            IPAService.Client client = TClient.creatIPAClient(keyInstance.getHostPort().getIp(), keyInstance.getHostPort().getPort());
+                            TClient clientDelegate = new TClient();
+                            IPAService.Client client = clientDelegate.createIPAClient(keyInstance.getHostPort().getIp(), keyInstance.getHostPort().getPort());
                             client.updatBudget(adjustInstance.get(keyInstance));
+                            clientDelegate.close();
                             LOG.info("the frequency of service instance running on " + keyInstance.getHostPort().getIp() + ":" + keyInstance.getHostPort().getPort() + " has been decreased from " + oldFreq + " ---> " + keyInstance.getCurrentFrequncy() + "GHz");
                         } catch (IOException ex) {
                             ex.printStackTrace();
@@ -649,7 +658,7 @@ public class CommandCenter implements SchedulerService.Iface {
 //            NodeManagerService.Client client = null;
 //            THostPort hostPort = null;
 //            try {
-//                client = TClient.creatNodeManagerClient(NODE_MANAGER_IP, NODE_MANAGER_PORT);
+//                client = TClient.createNodeManagerClient(NODE_MANAGER_IP, NODE_MANAGER_PORT);
 //                hostPort = client.launchServiceInstance(serviceType, defaultFrequency);
 //            } catch (IOException ex) {
 //                ex.printStackTrace();
@@ -675,8 +684,10 @@ public class CommandCenter implements SchedulerService.Iface {
                 candidateInstance.setLoadProb(loadProb);
                 serviceMap.get(serviceType).add(candidateInstance);
                 try {
-                    IPAService.Client client = TClient.creatIPAClient(candidateInstance.getHostPort().getIp(), candidateInstance.getHostPort().getPort());
+                    TClient clientDelegate = new TClient();
+                    IPAService.Client client = clientDelegate.createIPAClient(candidateInstance.getHostPort().getIp(), candidateInstance.getHostPort().getPort());
                     client.updatBudget(candidateInstance.getCurrentFrequncy());
+                    clientDelegate.close();
                 } catch (IOException ex) {
                     ex.printStackTrace();
                 } catch (TException ex) {
@@ -770,5 +781,10 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             return compareResult;
         }
+    }
+
+    @Override
+    public int warmupCount() throws TException {
+        return warmupCount.get();
     }
 }

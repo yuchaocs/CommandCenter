@@ -24,7 +24,8 @@ public class QAClient {
         // TODO Auto-generated method stub
         try {
             for (int i = 0; i < 50; i++) {
-                qaClient = TClient.creatIPAClient(QA_SERVICE_IP, QA_SERVICE_PORT);
+                TClient clientDelegate = new TClient();
+                qaClient = clientDelegate.createIPAClient(QA_SERVICE_IP, QA_SERVICE_PORT);
                 QuerySpec query = new QuerySpec();
                 query.setBudget(1000);
                 String input = "what is the speed of the light?";
@@ -34,6 +35,7 @@ public class QAClient {
                 List<LatencySpec> timestamp = new LinkedList<LatencySpec>();
                 query.setTimestamp(timestamp);
                 qaClient.submitQuery(query);
+                clientDelegate.close();
                 Thread.sleep(1000);
             }
         } catch (TException e) {
