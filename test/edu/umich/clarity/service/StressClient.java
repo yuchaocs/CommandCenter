@@ -5,36 +5,49 @@ import com.opencsv.CSVWriter;
 import edu.umich.clarity.service.util.TClient;
 import edu.umich.clarity.thrift.*;
 import org.apache.commons.math3.distribution.PoissonDistribution;
+import org.apache.log4j.Logger;
 import org.apache.thrift.TException;
-import sun.net.TelnetProtocolException;
 
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.*;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadFactory;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Random;
 
 /**
  * Created by hailong on 6/29/15.
  */
 public class StressClient {
-    public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
-    private static final double mean = 800;
-    private static final int num_client = 1000;
-    private static final String SAMPLE_FILE = "poisson_sample_.8_1000.csv";
-    private static final String SCHEDULER_IP = "localhost";
-    private static final int SCHEDULER_PORT = 8888;
-    private static final int WARMUP_COUNT = 20;
 
+    private static final Logger LOG = Logger.getLogger(StressClient.class);
+    public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
+    private static double mean = 800;
+    private static int num_client = 1000;
+    private static String SAMPLE_FILE = "poisson_sample_.8_1000.csv";
+    private static String SCHEDULER_IP = "localhost";
+    private static int SCHEDULER_PORT = 8888;
+    private static int WARMUP_COUNT = 20;
+
+    /**
+     * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
+     */
     public static void main(String[] args) {
+        if (args.length == 5) {
+            SCHEDULER_IP = args[0];
+            SCHEDULER_PORT = Integer.valueOf(args[1]);
+            SAMPLE_FILE = args[2];
+            num_client = Integer.valueOf(args[3]);
+            WARMUP_COUNT = Integer.valueOf(args[4]);
+        }
         StressClient client = new StressClient();
 //        client.genPoissonLoad(mean, num_client);
 //        client.genPoissonLoad();
 //        client.stablizePoissonSamples(mean, num_client);
-        System.out.println("start to warm up the services...");
+        LOG.info("start to warm up the services...");
         client.genPoissonLoad(WARMUP_COUNT);
         SchedulerService.Client schedulerClient = null;
         try {
@@ -42,7 +55,7 @@ public class StressClient {
             schedulerClient = clientDelegate.createSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
             int finishedQueries = 0;
             while ((finishedQueries = schedulerClient.warmupCount()) != WARMUP_COUNT) {
-                System.out.println("The number of warmed up queries is " + finishedQueries + ", sleep for 2s to check again");
+                LOG.info("The number of warmed up queries is " + finishedQueries + ", sleep for 2s to check again");
                 Thread.sleep(2000);
             }
             clientDelegate.close();
@@ -53,7 +66,7 @@ public class StressClient {
         } catch (TException ex) {
 
         }
-        System.out.println("start to evaluate the tail latency...");
+        LOG.info("start to evaluate the tail latency...");
         //TClient.close();
         client.genPoissonLoad(num_client);
     }
@@ -65,7 +78,7 @@ public class StressClient {
         String NEXT_STAGE = "asr";
         List sampleEntries = null;
         try {
-            CSVReader reader = new CSVReader(new FileReader(SAMPLE_FILE), ',');
+            CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + SAMPLE_FILE), ',');
             sampleEntries = reader.readAll();
         } catch (IOException ex) {
 
@@ -88,7 +101,7 @@ public class StressClient {
                     query.setTimestamp(timestamp);
                     serviceClient.submitQuery(query);
                     clientDelegate.close();
-                    System.out.println("Sending query " + i);
+                    LOG.info("Sending query " + i);
                     Thread.sleep(Integer.valueOf(sample[i]));
                 } catch (TException e) {
                     e.printStackTrace();
