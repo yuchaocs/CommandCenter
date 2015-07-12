@@ -6,8 +6,10 @@ import edu.umich.clarity.service.util.*;
 import edu.umich.clarity.thrift.*;
 import org.apache.commons.math3.stat.descriptive.rank.Percentile;
 import org.apache.log4j.Logger;
+import org.apache.log4j.PropertyConfigurator;
 import org.apache.thrift.TException;
 
+import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -22,31 +24,33 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
+    // public static final String EXECUTION_MODE = "ide";
+    public static final String EXECUTION_MODE = "deploy";
     public static final String LATENCY_TYPE = "tail";
-
-    public static final boolean VANILLA_MODE = true;
-    private static final double GLOBAL_POWER_BUDGET = 5.19 * 3;
     // save for future use
-    private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
-    private static final int NODE_MANAGER_PORT = 8060;
-
+    // private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
+    // private static final int NODE_MANAGER_PORT = 8060;
     private static final Logger LOG = Logger.getLogger(CommandCenter.class);
-    private static final String SCHEDULER_IP = "localhost";
-    private static final int SCHEDULER_PORT = 8888;
-    // the interval to adjust power budget (per queries)
-    private static final int ADJUST_BUDGET_INTERVAL = 10;
-    // the interval to withdraw the idle service instances (per queries)
-    private static final int WITHDRAW_BUDGET_INTERVAL = 105;
     // best effort or guarantee
     private static final long LATENCY_BUDGET = 300;
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
     private static final String[] LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
-    // the tail latency target
-    private static final double LATENCY_PERCENTILE = 99;
-    // latency threshold between instances before stopping power adjustment
-    private static final double ADJUST_THRESHOLD = 1000;
     private static final double DEFAULT_FREQUENCY = 1.2;
+    public static boolean VANILLA_MODE = true;
+    private static double GLOBAL_POWER_BUDGET = 5.19 * 3;
+    private static int SCHEDULER_PORT = 8888;
+    // the interval to adjust power budget (per queries)
+    private static int ADJUST_BUDGET_INTERVAL = 10;
+    // the interval to withdraw the idle service instances (per queries)
+    private static int WITHDRAW_BUDGET_INTERVAL = 105;
+    // the number of queries to warm up the services
+    private static int WARMUP_COUNT = 20;
+    private static AtomicInteger warmupCount = new AtomicInteger(0);
+    // latency threshold between instances before stopping power adjustment
+    private static double ADJUST_THRESHOLD = 1000;
+    // the tail latency target
+    private static double LATENCY_PERCENTILE = 99;
     private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
@@ -57,20 +61,35 @@ public class CommandCenter implements SchedulerService.Iface {
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
-    private static final int WARMUP_COUNT = 20;
-    private static AtomicInteger warmupCount = new AtomicInteger(0);
+
+    public CommandCenter() {
+        PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
+    }
 
     /**
-     * @param args
+     * @param args args[0]: port, args[1]: adjust_interval, args[2]: withdraw_interval, args[3]: warm_up_account, args[4]: adjust_threshold, args[5]: tail_percentile, args[6]: global_power_budget, args[7]: execution_mode
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
+        if (args.length == 8) {
+            SCHEDULER_PORT = Integer.valueOf(args[0]);
+            ADJUST_BUDGET_INTERVAL = Integer.valueOf(args[1]);
+            WITHDRAW_BUDGET_INTERVAL = Integer.valueOf(args[2]);
+            WARMUP_COUNT = Integer.valueOf(args[3]);
+            ADJUST_THRESHOLD = Double.valueOf(args[4]);
+            LATENCY_PERCENTILE = Double.valueOf(args[5]);
+            GLOBAL_POWER_BUDGET = Double.valueOf(args[6]);
+            if (args[7].equalsIgnoreCase("vanilla")) {
+                VANILLA_MODE = true;
+            } else if (args[7].equalsIgnoreCase("recycle")) {
+                VANILLA_MODE = false;
+            }
+        }
         CommandCenter commandCenter = new CommandCenter();
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
                 commandCenter);
         TServers.launchSingleThreadThriftServer(SCHEDULER_PORT, processor);
-        LOG.info("starting command center at " + SCHEDULER_IP + ":"
-                + SCHEDULER_PORT);
+        LOG.info("starting command center at port " + SCHEDULER_PORT);
         commandCenter.initialize();
     }
 
@@ -94,8 +113,8 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
         try {
-            speedupReader = new CSVReader(new FileReader("freq.csv"), ',', '\n', 1);
-            latencyWriter = new CSVWriter(new FileWriter("query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            speedupReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "freq.csv"), ',', '\n', 1);
+            latencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             latencyWriter.writeNext(LATENCY_FILE_HEADER);
             latencyWriter.flush();
         } catch (IOException e) {
@@ -293,6 +312,11 @@ public class CommandCenter implements SchedulerService.Iface {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    @Override
+    public int warmupCount() throws TException {
+        return warmupCount.get();
     }
 
     /**
@@ -781,10 +805,5 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             return compareResult;
         }
-    }
-
-    @Override
-    public int warmupCount() throws TException {
-        return warmupCount.get();
     }
 }
