@@ -28,7 +28,7 @@ public class StressClient {
     private static final Logger LOG = Logger.getLogger(StressClient.class);
     private static double mean = 1500;
     private static int num_client = 1000;
-    private static String SAMPLE_FILE = "poisson_sample_1.5_1000.csv";
+    private static String SAMPLE_FILE = "poisson_sample_.8_1000.csv";
     private static String SCHEDULER_IP = "localhost";
     private static int SCHEDULER_PORT = 8888;
     private static int WARMUP_COUNT = 20;

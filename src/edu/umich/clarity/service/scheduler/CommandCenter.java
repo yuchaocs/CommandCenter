@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
+    public static boolean VANILLA_MODE = false;
     public static final String LATENCY_TYPE = "tail";
     // save for future use
     // private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
@@ -34,14 +35,14 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
     private static final String[] LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
+    private static final String[] FREQUENCY_FILE_HEADER = {"service_instance", "timestamp", "frequency"};
     private static final double DEFAULT_FREQUENCY = 1.2;
-    public static boolean VANILLA_MODE = true;
-    private static double GLOBAL_POWER_BUDGET = 5.19 * 3;
+    private static double GLOBAL_POWER_BUDGET = 4.52 * 3;
     private static int SCHEDULER_PORT = 8888;
     // the interval to adjust power budget (per queries)
-    private static int ADJUST_BUDGET_INTERVAL = 10;
+    private static int ADJUST_BUDGET_INTERVAL = 50;
     // the interval to withdraw the idle service instances (per queries)
-    private static int WITHDRAW_BUDGET_INTERVAL = 105;
+    private static int WITHDRAW_BUDGET_INTERVAL = 125;
     // the number of queries to warm up the services
     private static int WARMUP_COUNT = 20;
     private static AtomicInteger warmupCount = new AtomicInteger(0);
@@ -50,15 +51,19 @@ public class CommandCenter implements SchedulerService.Iface {
     // the tail latency target
     private static double LATENCY_PERCENTILE = 99;
     private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
+    private static Map<String, Double> frequencyStat = new HashMap<String, Double>();
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private static CSVWriter latencyWriter = null;
+    private static CSVWriter frequencyWriter = null;
     private static CSVReader speedupReader = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
+
+    private static long initialTimestamp;
 
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
@@ -79,7 +84,7 @@ public class CommandCenter implements SchedulerService.Iface {
             GLOBAL_POWER_BUDGET = Double.valueOf(args[6]);
             if (args[7].equalsIgnoreCase("vanilla")) {
                 VANILLA_MODE = true;
-                } else if (args[7].equalsIgnoreCase("recycle")) {
+            } else if (args[7].equalsIgnoreCase("recycle")) {
                 VANILLA_MODE = false;
             }
         }
@@ -113,8 +118,11 @@ public class CommandCenter implements SchedulerService.Iface {
         try {
             speedupReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "freq.csv"), ',', '\n', 1);
             latencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            frequencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "frequency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             latencyWriter.writeNext(LATENCY_FILE_HEADER);
             latencyWriter.flush();
+            frequencyWriter.writeNext(FREQUENCY_FILE_HEADER);
+            frequencyWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -273,38 +281,60 @@ public class CommandCenter implements SchedulerService.Iface {
     @Override
     public void enqueueFinishedQuery(QuerySpec query) throws TException {
         try {
-            finishedQueryQueue.put(query);
-            /**
-             * there are three timestamps for each stage, the first timestamp is
-             * when the query entering the queue, the second timestamp is when
-             * the query get served, the third one is when the serving iss done.
-             */
-            ArrayList<String> csvEntry = new ArrayList<String>();
-            long total_queuing = 0;
-            long total_serving = 0;
-            csvEntry.add(query.getName());
-            for (int i = 0; i < query.getTimestamp().size(); i++) {
-                LatencySpec latencySpec = query.getTimestamp().get(i);
-                long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
-                total_queuing += queuing_time;
-                long serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
-                total_serving += serving_time;
-                csvEntry.add("" + queuing_time);
-                csvEntry.add("" + serving_time);
-                csvEntry.add("" + latencySpec.getInstance_id());
-                LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
-                        + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
-            }
-            LOG.info("Query " + query.getName() + ": total queuing "
-                    + total_queuing + "ms" + " total serving " + total_serving
-                    + "ms" + " at all stages with total latency "
-                    + (total_queuing + total_serving) + "ms");
-            csvEntry.add("" + total_queuing);
-            csvEntry.add("" + total_serving);
             if (warmupCount.incrementAndGet() > WARMUP_COUNT) {
+                finishedQueryQueue.put(query);
+                /**
+                 * there are three timestamps for each stage, the first timestamp is
+                 * when the query entering the queue, the second timestamp is when
+                 * the query get served, the third one is when the serving iss done.
+                 */
+                ArrayList<String> csvEntry = new ArrayList<String>();
+                long total_queuing = 0;
+                long total_serving = 0;
+                csvEntry.add(query.getName());
+                for (int i = 0; i < query.getTimestamp().size(); i++) {
+                    LatencySpec latencySpec = query.getTimestamp().get(i);
+                    long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
+                    total_queuing += queuing_time;
+                    long serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
+                    total_serving += serving_time;
+                    csvEntry.add("" + queuing_time);
+                    csvEntry.add("" + serving_time);
+                    csvEntry.add("" + latencySpec.getInstance_id());
+                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
+                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
+                }
+                LOG.info("Query " + query.getName() + ": total queuing "
+                        + total_queuing + "ms" + " total serving " + total_serving
+                        + "ms" + " at all stages with total latency "
+                        + (total_queuing + total_serving) + "ms");
+                csvEntry.add("" + total_queuing);
+                csvEntry.add("" + total_serving);
                 latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 latencyWriter.flush();
             }
+            if (warmupCount.get() == WARMUP_COUNT) {
+                initialTimestamp = System.currentTimeMillis();
+                for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
+                    for (ServiceInstance instance : entry.getValue()) {
+                        String instanceId = instance.getServiceType() + instance.getHostPort().getIp() + instance.getHostPort().getPort();
+
+                        frequencyStat.put(instanceId, instance.getCurrentFrequncy());
+                    }
+                }
+            }
+//                long initial_timestamp = System.currentTimeMillis();
+//                // write the initial frequency setting of each service
+//                for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
+//                    for (ServiceInstance instance : entry.getValue()) {
+//                        ArrayList<String> csvEntry = new ArrayList<String>();
+//                        csvEntry.add("" + instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort());
+//                        csvEntry.add("" + initial_timestamp);
+//                        csvEntry.add("" + instance.getCurrentFrequncy());
+//                        frequencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+//                        frequencyWriter.flush();
+//                    }
+//                }
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -351,11 +381,55 @@ public class CommandCenter implements SchedulerService.Iface {
                     removed_queries += 1;
                     LOG.info(removed_queries + " query latency statistics are returned to command center");
                     if (removed_queries % ADJUST_BUDGET_INTERVAL == 0) {
+                        long currentTimestamp = System.currentTimeMillis();
+                        for (Map.Entry<String, Double> entry : frequencyStat.entrySet()) {
+                            ArrayList<String> csvEntry = new ArrayList<String>();
+                            csvEntry.add(entry.getKey());
+                            csvEntry.add("" + (currentTimestamp - initialTimestamp));
+                            csvEntry.add("" + entry.getValue());
+                            frequencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                            try {
+                                frequencyWriter.flush();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                        frequencyStat.clear();
+                        initialTimestamp = currentTimestamp;
                         adjustPowerBudget();
+                        for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
+                            for (ServiceInstance instance : entry.getValue()) {
+                                String instanceId = instance.getServiceType() + instance.getHostPort().getIp() + instance.getHostPort().getPort();
+
+                                frequencyStat.put(instanceId, instance.getCurrentFrequncy());
+                            }
+                        }
                         // loadBalance();
                     }
                     if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
+                        long currentTimestamp = System.currentTimeMillis();
+                        for (Map.Entry<String, Double> entry : frequencyStat.entrySet()) {
+                            ArrayList<String> csvEntry = new ArrayList<String>();
+                            csvEntry.add(entry.getKey());
+                            csvEntry.add("" + (currentTimestamp - initialTimestamp));
+                            csvEntry.add("" + entry.getValue());
+                            frequencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                            try {
+                                frequencyWriter.flush();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                        frequencyStat.clear();
+                        initialTimestamp = currentTimestamp;
                         relinquishServiceInstance();
+                        for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
+                            for (ServiceInstance instance : entry.getValue()) {
+                                String instanceId = instance.getServiceType() + instance.getHostPort().getIp() + instance.getHostPort().getPort();
+
+                                frequencyStat.put(instanceId, instance.getCurrentFrequncy());
+                            }
+                        }
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -394,19 +468,21 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
             }
             // shutdown the service instance and relinquish the gobal power budget
-            for (String serviceType : relinquishMap.keySet()) {
-                List<Integer> relinquishIndexList = relinquishMap.get(serviceType);
-                if (relinquishIndexList.size() != 0) {
+            if (relinquishMap.size() != 0) {
+                for (String serviceType : relinquishMap.keySet()) {
+                    List<Integer> relinquishIndexList = relinquishMap.get(serviceType);
                     List<ServiceInstance> serviceInstanceList = serviceMap.get(serviceType);
                     for (Integer index : relinquishIndexList) {
                         ServiceInstance instance = serviceInstanceList.get(index);
                         double allocatedFreq = instance.getCurrentFrequncy();
                         POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() + PowerModel.getPowerPerFreq(allocatedFreq)));
                         serviceInstanceList.remove(index);
-                        // instead of shutting down, put the recycled service instance into the candidate list
-                        Collections.sort(serviceInstanceList, new ServingTimeComparator(LATENCY_TYPE));
-                        ServiceInstance fastestInstance = serviceInstanceList.get(serviceInstanceList.size() - 1);
+                        List<ServiceInstance> sortedInstanceList = new LinkedList<ServiceInstance>();
+                        sortedInstanceList.addAll(serviceInstanceList);
+                        Collections.sort(sortedInstanceList, new ServingTimeComparator(LATENCY_TYPE));
+                        ServiceInstance fastestInstance = sortedInstanceList.get(sortedInstanceList.size() - 1);
                         fastestInstance.setLoadProb(instance.getLoadProb() + fastestInstance.getLoadProb());
+                        // instead of shutting down, put the recycled service instance into the candidate list
                         instance.getQueuing_latency().clear();
                         instance.getServing_latency().clear();
                         candidateMap.get(serviceType).add(instance);
@@ -416,9 +492,9 @@ public class CommandCenter implements SchedulerService.Iface {
                             break;
                         }
                     }
-                } else {
-                    LOG.info("no service instance can be recycled, wait for the next recycle interval");
                 }
+            } else {
+                LOG.info("no service instance can be recycled, wait for the next recycle interval");
             }
             LOG.info("==================================================");
         }
