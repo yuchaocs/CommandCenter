@@ -24,8 +24,8 @@ import java.util.Random;
  */
 public class StressClient {
 
-    private static final Logger LOG = Logger.getLogger(StressClient.class);
     public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
+    private static final Logger LOG = Logger.getLogger(StressClient.class);
     private static double mean = 800;
     private static int num_client = 1000;
     private static String SAMPLE_FILE = "poisson_sample_.8_1000.csv";
@@ -33,9 +33,10 @@ public class StressClient {
     private static int SCHEDULER_PORT = 8888;
     private static int WARMUP_COUNT = 20;
 
-    public StressClient(){
+    public StressClient() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
+
     /**
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
@@ -82,7 +83,8 @@ public class StressClient {
         String NEXT_STAGE = "asr";
         List sampleEntries = null;
         try {
-            CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + SAMPLE_FILE), ',');
+            CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator +
+                    SAMPLE_FILE), ',');
             sampleEntries = reader.readAll();
         } catch (IOException ex) {
 
