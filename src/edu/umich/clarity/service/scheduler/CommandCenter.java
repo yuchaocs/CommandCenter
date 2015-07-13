@@ -24,8 +24,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
-    // public static final String EXECUTION_MODE = "ide";
-    public static final String EXECUTION_MODE = "deploy";
     public static final String LATENCY_TYPE = "tail";
     // save for future use
     // private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
@@ -81,7 +79,7 @@ public class CommandCenter implements SchedulerService.Iface {
             GLOBAL_POWER_BUDGET = Double.valueOf(args[6]);
             if (args[7].equalsIgnoreCase("vanilla")) {
                 VANILLA_MODE = true;
-            } else if (args[7].equalsIgnoreCase("recycle")) {
+                } else if (args[7].equalsIgnoreCase("recycle")) {
                 VANILLA_MODE = false;
             }
         }

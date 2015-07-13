@@ -6,6 +6,7 @@ import edu.umich.clarity.service.util.TClient;
 import edu.umich.clarity.thrift.*;
 import org.apache.commons.math3.distribution.PoissonDistribution;
 import org.apache.log4j.Logger;
+import org.apache.log4j.PropertyConfigurator;
 import org.apache.thrift.TException;
 
 import java.io.File;
@@ -32,6 +33,9 @@ public class StressClient {
     private static int SCHEDULER_PORT = 8888;
     private static int WARMUP_COUNT = 20;
 
+    public StressClient(){
+        PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
+    }
     /**
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
