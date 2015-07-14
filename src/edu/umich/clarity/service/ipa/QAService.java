@@ -1,6 +1,7 @@
 package edu.umich.clarity.service.ipa;
 
 import edu.umich.clarity.service.util.QueryComparator;
+import edu.umich.clarity.service.util.TClient;
 import edu.umich.clarity.service.util.TServers;
 import edu.umich.clarity.thrift.*;
 import org.apache.log4j.Logger;
@@ -8,10 +9,12 @@ import org.apache.thrift.TException;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 public class QAService implements IPAService.Iface {
     private static final String SERVICE_NAME = "qa";
@@ -96,12 +99,41 @@ public class QAService implements IPAService.Iface {
 
     @Override
     public void stealParentInstance(THostPort hostPort) throws TException {
-
+        TClient clientDelegate = new TClient();
+        IPAService.Client service_client = null;
+        try {
+            service_client = clientDelegate.createIPAClient(hostPort.getIp(),
+                    hostPort.getPort());
+            List<QuerySpec> queryList = service_client.stealQueuedQueries();
+            for (QuerySpec query : queryList) {
+                long resetTimestamp = System.currentTimeMillis();
+                LatencySpec latencySpec = query.getTimestamp().get(query.getTimestamp().size() - 1);
+                latencySpec.setQueuing_start_time(resetTimestamp - latencySpec.getQueuing_start_time());
+                latencySpec.setInstance_id(this.SERVICE_NAME + "_" + this.SERVICE_IP + "_" + this.SERVICE_PORT);
+                queryQueue.put(query);
+            }
+            clientDelegate.close();
+        } catch (IOException ex) {
+            LOG.error("Error creating thrift scheduler client"
+                    + ex.getMessage());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
     public List<QuerySpec> stealQueuedQueries() throws TException {
-        return null;
+        int stealNum = queryQueue.size() / 2;
+        List<QuerySpec> querySpecList = new LinkedList<QuerySpec>();
+        QuerySpec querySpec = null;
+        while (stealNum > -1 && (querySpec = queryQueue.poll()) != null) {
+            LatencySpec latencySpec = querySpec.getTimestamp().get(querySpec.getTimestamp().size() - 1);
+            long currentTimestamp = System.currentTimeMillis();
+            latencySpec.setQueuing_start_time(currentTimestamp - latencySpec.getQueuing_start_time());
+            querySpecList.add(querySpec);
+            stealNum--;
+        }
+        return querySpecList;
     }
 
     @Override

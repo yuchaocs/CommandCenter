@@ -322,7 +322,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 initialTimestamp = System.currentTimeMillis();
                 for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                     for (ServiceInstance instance : entry.getValue()) {
-                        String instanceId = instance.getServiceType() + instance.getHostPort().getIp() + instance.getHostPort().getPort();
+                        String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
 
                         frequencyStat.put(instanceId, instance.getCurrentFrequncy());
                     }
@@ -407,7 +407,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         adjustPowerBudget();
                         for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                             for (ServiceInstance instance : entry.getValue()) {
-                                String instanceId = instance.getServiceType() + instance.getHostPort().getIp() + instance.getHostPort().getPort();
+                                String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
 
                                 frequencyStat.put(instanceId, instance.getCurrentFrequncy());
                             }
@@ -764,15 +764,16 @@ public class CommandCenter implements SchedulerService.Iface {
             if (candidateMap.get(serviceType).size() != 0) {
                 List<ServiceInstance> instanceList = candidateMap.get(serviceType);
                 ServiceInstance candidateInstance = instanceList.get(0);
-                instanceList.remove(0);
                 candidateInstance.setServiceType(serviceType);
                 candidateInstance.setCurrentFrequncy(instance.getCurrentFrequncy());
                 candidateInstance.setLoadProb(loadProb);
+                instanceList.remove(0);
                 serviceMap.get(serviceType).add(candidateInstance);
                 try {
                     TClient clientDelegate = new TClient();
                     IPAService.Client client = clientDelegate.createIPAClient(candidateInstance.getHostPort().getIp(), candidateInstance.getHostPort().getPort());
                     client.updatBudget(candidateInstance.getCurrentFrequncy());
+                    client.stealParentInstance(instance.getHostPort());
                     clientDelegate.close();
                 } catch (IOException ex) {
                     ex.printStackTrace();
