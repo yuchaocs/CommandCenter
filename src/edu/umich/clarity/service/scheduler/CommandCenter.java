@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class CommandCenter implements SchedulerService.Iface {
 
     public static boolean VANILLA_MODE = false;
-    public static final String LATENCY_TYPE = "tail";
+    public static final String LATENCY_TYPE = "average";
     // save for future use
     // private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
     // private static final int NODE_MANAGER_PORT = 8060;
@@ -36,13 +36,13 @@ public class CommandCenter implements SchedulerService.Iface {
     // headers for the CSV result files
     private static final String[] LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
     private static final String[] FREQUENCY_FILE_HEADER = {"service_instance", "timestamp", "frequency"};
-    private static final double DEFAULT_FREQUENCY = 1.2;
-    private static double GLOBAL_POWER_BUDGET = 4.52 * 3;
+    private static final double DEFAULT_FREQUENCY = 1.8;
+    private static double GLOBAL_POWER_BUDGET = 9.48 * 3;
     private static int SCHEDULER_PORT = 8888;
     // the interval to adjust power budget (per queries)
     private static int ADJUST_BUDGET_INTERVAL = 50;
     // the interval to withdraw the idle service instances (per queries)
-    private static int WITHDRAW_BUDGET_INTERVAL = 125;
+    private static int WITHDRAW_BUDGET_INTERVAL = ADJUST_BUDGET_INTERVAL * 3;
     // the number of queries to warm up the services
     private static int WARMUP_COUNT = 20;
     private static AtomicInteger warmupCount = new AtomicInteger(0);
@@ -206,24 +206,29 @@ public class CommandCenter implements SchedulerService.Iface {
     private THostPort loadBalanceAssignService(List<ServiceInstance> service_list) {
         THostPort hostPort = null;
         // Collections.sort(service_list, new LoadProbabilityComparator());
-        List<Double> thresHold = new LinkedList<Double>();
+        int scale = 10000;
+        List<Integer> thresHold = new LinkedList<Integer>();
         for (int i = 0; i < service_list.size(); i++) {
             ServiceInstance instance = service_list.get(i);
-            double sum = 0;
+            int sum = 0;
             for (int j = 0; j < i + 1; j++) {
-                sum += service_list.get(j).getLoadProb();
+                sum += service_list.get(j).getLoadProb() * scale;
             }
             thresHold.add(sum);
         }
 
         Random rand = new Random();
-        double index = rand.nextDouble();
+        int index = rand.nextInt(scale);
 
         for (int i = 0; i < thresHold.size(); i++) {
-            if (index < thresHold.get(i)) {
+            if (index <= thresHold.get(i)) {
                 hostPort = service_list.get(i).getHostPort();
                 break;
             }
+        }
+        // in case the double value doesn't add up to 1
+        if (index > thresHold.get(thresHold.size() - 1)) {
+            hostPort = service_list.get(thresHold.size() - 1).getHostPort();
         }
         // LOG.info("The load balance policy chooses the service instance " + hostPort.getIp() + ":" + hostPort.getPort() + " with probability " + service_list.get(i).getLoadProb() / totalProb);
         return hostPort;
@@ -396,6 +401,9 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                         frequencyStat.clear();
                         initialTimestamp = currentTimestamp;
+                        if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
+                            relinquishServiceInstance();
+                        }
                         adjustPowerBudget();
                         for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                             for (ServiceInstance instance : entry.getValue()) {
@@ -405,31 +413,6 @@ public class CommandCenter implements SchedulerService.Iface {
                             }
                         }
                         // loadBalance();
-                    }
-                    if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
-                        long currentTimestamp = System.currentTimeMillis();
-                        for (Map.Entry<String, Double> entry : frequencyStat.entrySet()) {
-                            ArrayList<String> csvEntry = new ArrayList<String>();
-                            csvEntry.add(entry.getKey());
-                            csvEntry.add("" + (currentTimestamp - initialTimestamp));
-                            csvEntry.add("" + entry.getValue());
-                            frequencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                            try {
-                                frequencyWriter.flush();
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
-                        }
-                        frequencyStat.clear();
-                        initialTimestamp = currentTimestamp;
-                        relinquishServiceInstance();
-                        for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
-                            for (ServiceInstance instance : entry.getValue()) {
-                                String instanceId = instance.getServiceType() + instance.getHostPort().getIp() + instance.getHostPort().getPort();
-
-                                frequencyStat.put(instanceId, instance.getCurrentFrequncy());
-                            }
-                        }
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -469,6 +452,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             // shutdown the service instance and relinquish the gobal power budget
             if (relinquishMap.size() != 0) {
+                int withdrawNum = 0;
                 for (String serviceType : relinquishMap.keySet()) {
                     List<Integer> relinquishIndexList = relinquishMap.get(serviceType);
                     List<ServiceInstance> serviceInstanceList = serviceMap.get(serviceType);
@@ -488,10 +472,14 @@ public class CommandCenter implements SchedulerService.Iface {
                         candidateMap.get(serviceType).add(instance);
                         LOG.info("recycling the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " and the power budget recycled is " + PowerModel.getPowerPerFreq(allocatedFreq));
                         LOG.info("the current global power budget is " + POWER_BUDGET.get().doubleValue());
+                        withdrawNum++;
                         if (serviceInstanceList.size() == 1) {
                             break;
                         }
                     }
+                }
+                if (withdrawNum == 0) {
+                    LOG.info("no service instance can be recycled, wait for the next recycle interval");
                 }
             } else {
                 LOG.info("no service instance can be recycled, wait for the next recycle interval");

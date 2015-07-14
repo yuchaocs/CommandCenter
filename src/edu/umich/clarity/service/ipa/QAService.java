@@ -95,6 +95,16 @@ public class QAService implements IPAService.Iface {
     }
 
     @Override
+    public void stealParentInstance(THostPort hostPort) throws TException {
+
+    }
+
+    @Override
+    public List<QuerySpec> stealQueuedQueries() throws TException {
+        return null;
+    }
+
+    @Override
     public void updatBudget(double budget) throws TException {
         this.budget = budget;
         LOG.info("service " + SERVICE_NAME + " at " + SERVICE_IP + ":"
