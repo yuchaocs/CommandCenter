@@ -13,7 +13,7 @@ service IPAService {
 	i32 reportQueueLength(),
 	void updatBudget(1: double budget),
 	void submitQuery(1: types.QuerySpec query),
-	void stealParentInstance(1: types.THostPort hostPort),
+	i32 stealParentInstance(1: types.THostPort hostPort),
 	list<types.QuerySpec> stealQueuedQueries()
 }
 

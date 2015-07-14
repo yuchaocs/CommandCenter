@@ -768,19 +768,21 @@ public class CommandCenter implements SchedulerService.Iface {
                 candidateInstance.setCurrentFrequncy(instance.getCurrentFrequncy());
                 candidateInstance.setLoadProb(loadProb);
                 instanceList.remove(0);
+                int stealedQueries = 0;
                 serviceMap.get(serviceType).add(candidateInstance);
                 try {
                     TClient clientDelegate = new TClient();
                     IPAService.Client client = clientDelegate.createIPAClient(candidateInstance.getHostPort().getIp(), candidateInstance.getHostPort().getPort());
                     client.updatBudget(candidateInstance.getCurrentFrequncy());
-                    client.stealParentInstance(instance.getHostPort());
+                    stealedQueries = client.stealParentInstance(instance.getHostPort());
                     clientDelegate.close();
                 } catch (IOException ex) {
                     ex.printStackTrace();
                 } catch (TException ex) {
                     ex.printStackTrace();
                 }
-                LOG.info("Launching new service instance " + serviceType + " on " + candidateInstance.getHostPort().getIp() + ":" + candidateInstance.getHostPort().getPort() + " with frequency " + candidateInstance.getCurrentFrequncy() + "GHz");
+                LOG.info("launching new service instance " + serviceType + " on " + candidateInstance.getHostPort().getIp() + ":" + candidateInstance.getHostPort().getPort() + " with frequency " + candidateInstance.getCurrentFrequncy() + "GHz");
+                LOG.info("stealed " + stealedQueries + " queries from parent service " + serviceType + " running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
                 LOG.info("updating the load probability of the parent service instance to " + loadProb);
             } else {
                 LOG.info("The node manager has run out of service instance " + serviceType);

@@ -98,9 +98,10 @@ public class QAService implements IPAService.Iface {
     }
 
     @Override
-    public void stealParentInstance(THostPort hostPort) throws TException {
+    public int stealParentInstance(THostPort hostPort) throws TException {
         TClient clientDelegate = new TClient();
         IPAService.Client service_client = null;
+        int stealedQueries = 0;
         try {
             service_client = clientDelegate.createIPAClient(hostPort.getIp(),
                     hostPort.getPort());
@@ -113,12 +114,14 @@ public class QAService implements IPAService.Iface {
                 queryQueue.put(query);
             }
             clientDelegate.close();
+            stealedQueries = queryList.size();
         } catch (IOException ex) {
             LOG.error("Error creating thrift scheduler client"
                     + ex.getMessage());
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
+        return stealedQueries;
     }
 
     @Override
