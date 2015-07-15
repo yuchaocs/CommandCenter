@@ -6,6 +6,7 @@ package edu.umich.clarity.service.util;
 public class BoostDecision {
     public static final String FREQUENCY_BOOST = "frequency";
     public static final String INSTANCE_BOOST = "instance";
+    public static final String ADAPTIVE_BOOST = "adaptive";
     private String decision;
     private double requiredPower;
     private double loadProb;
