@@ -62,7 +62,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
-    private static final String BOOSTING_DECISION = BoostDecision.FREQUENCY_BOOST;
+    private static String BOOSTING_DECISION = BoostDecision.FREQUENCY_BOOST;
     private static final int MINIMUM_QUEUE_LENGTH = 3;
     private static long initialTimestamp;
 
@@ -75,7 +75,7 @@ public class CommandCenter implements SchedulerService.Iface {
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
-        if (args.length == 8) {
+        if (args.length == 9) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
             ADJUST_BUDGET_INTERVAL = Integer.valueOf(args[1]);
             WITHDRAW_BUDGET_INTERVAL = Integer.valueOf(args[2]);
@@ -88,6 +88,7 @@ public class CommandCenter implements SchedulerService.Iface {
             } else if (args[7].equalsIgnoreCase("recycle")) {
                 VANILLA_MODE = false;
             }
+            BOOSTING_DECISION = args[8];
         }
         CommandCenter commandCenter = new CommandCenter();
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
