@@ -64,7 +64,8 @@ public class CommandCenter implements SchedulerService.Iface {
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
     private static String BOOSTING_DECISION = BoostDecision.FREQUENCY_BOOST;
     private static final int MINIMUM_QUEUE_LENGTH = 3;
-    private static long initialTimestamp;
+    private static long initialAdjustTimestamp;
+    private static long initialWithdrawTimestamp;
 
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
@@ -321,7 +322,8 @@ public class CommandCenter implements SchedulerService.Iface {
                 latencyWriter.flush();
             }
             if (warmupCount.get() == WARMUP_COUNT) {
-                initialTimestamp = System.currentTimeMillis();
+                initialAdjustTimestamp = System.currentTimeMillis();
+                initialWithdrawTimestamp = initialAdjustTimestamp;
                 for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                     for (ServiceInstance instance : entry.getValue()) {
                         String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
@@ -381,6 +383,7 @@ public class CommandCenter implements SchedulerService.Iface {
                             if (instanceIp.equalsIgnoreCase(host) && instancePort == new Integer(port).intValue()) {
                                 instance.getServing_latency().add(new Double(serving_time));
                                 instance.getQueuing_latency().add(new Double(queuing_time));
+                                instance.setQueriesBetweenWithdraw(instance.getQueriesBetweenWithdraw() + 1);
                             }
                         }
                     }
@@ -391,7 +394,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         for (Map.Entry<String, Double> entry : frequencyStat.entrySet()) {
                             ArrayList<String> csvEntry = new ArrayList<String>();
                             csvEntry.add(entry.getKey());
-                            csvEntry.add("" + (currentTimestamp - initialTimestamp));
+                            csvEntry.add("" + (currentTimestamp - initialAdjustTimestamp));
                             csvEntry.add("" + entry.getValue());
                             frequencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                             try {
@@ -401,9 +404,15 @@ public class CommandCenter implements SchedulerService.Iface {
                             }
                         }
                         frequencyStat.clear();
-                        initialTimestamp = currentTimestamp;
+                        initialAdjustTimestamp = currentTimestamp;
                         if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
-                            relinquishServiceInstance();
+                            withdrawServiceInstance();
+                            for (Map.Entry<String, List<ServiceInstance>> serviceEntry : serviceMap.entrySet()) {
+                                for (ServiceInstance instance : serviceEntry.getValue()) {
+                                    instance.setQueriesBetweenWithdraw(0);
+                                }
+                            }
+                            initialWithdrawTimestamp = System.currentTimeMillis();
                         }
                         adjustPowerBudget();
                         for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
@@ -423,53 +432,55 @@ public class CommandCenter implements SchedulerService.Iface {
 
         /**
          * Every WITHDRAW_BUDGET_INTERVAL queries, if the queuing time of a service instance keeps zero and there are multiple instances of that service type available, stop one service instance and relinquish the power budget.
+         * FIXME withdraw logic is too rigid that no service instance can be withdrew
+         * new withdraw logic: if a service instance spends more than half of the withdraw interval in idle state, then withdraw it. Also in order to not be too aggressive, withdraw at most one instance of each service type.
          */
-        private void relinquishServiceInstance() {
+        private void withdrawServiceInstance() {
+            long timePeriod = System.currentTimeMillis() - initialWithdrawTimestamp;
             LOG.info("==================================================");
             LOG.info("start to recycle the service instances...");
             LOG.info("scanning the queuing time of the past " + WITHDRAW_BUDGET_INTERVAL + " queries");
-            Map<String, List<Integer>> relinquishMap = new HashMap<String, List<Integer>>();
+            Map<String, List<Integer>> withdrawMap = new HashMap<String, List<Integer>>();
             for (String serviceType : serviceMap.keySet()) {
                 List<ServiceInstance> serviceInstanceList = serviceMap.get(serviceType);
                 if (serviceInstanceList.size() > 1) {
-                    relinquishMap.put(serviceType, new LinkedList<Integer>());
+                    withdrawMap.put(serviceType, new LinkedList<Integer>());
                     for (int i = 0; i < serviceInstanceList.size(); i++) {
                         ServiceInstance serviceInstance = serviceInstanceList.get(i);
-                        double queuingTime = 0;
-                        int statisticLength = serviceInstance.getQueuing_latency().size();
-                        if (statisticLength != 0) {
-                            for (int index = 0; index < statisticLength && index < WITHDRAW_BUDGET_INTERVAL / serviceInstanceList.size(); index++) {
-                                queuingTime += serviceInstance.getQueuing_latency().get(statisticLength - 1 - index);
-                                if (queuingTime > 0) {
-                                    break;
-                                }
+                        double servingTime = 0;
+                        int statisticLength = serviceInstance.getServing_latency().size() - serviceInstance.getQueriesBetweenWithdraw();
+                        if (statisticLength <= serviceInstance.getServing_latency().size() - 1) {
+                            for (int index = statisticLength; index < serviceInstance.getServing_latency().size(); index++) {
+                                servingTime += serviceInstance.getServing_latency().get(index);
                             }
                         }
-                        if (queuingTime == 0) {
-                            relinquishMap.get(serviceType).add(i);
+                        if (Double.compare(servingTime, new Double(timePeriod / 2.0)) < 0) {
+                            withdrawMap.get(serviceType).add(i);
+                            break;
                         }
                     }
                 }
             }
             // shutdown the service instance and relinquish the gobal power budget
-            if (relinquishMap.size() != 0) {
+            if (withdrawMap.size() != 0) {
                 int withdrawNum = 0;
-                for (String serviceType : relinquishMap.keySet()) {
-                    List<Integer> relinquishIndexList = relinquishMap.get(serviceType);
+                for (String serviceType : withdrawMap.keySet()) {
+                    List<Integer> withdrawIndexList = withdrawMap.get(serviceType);
                     List<ServiceInstance> serviceInstanceList = serviceMap.get(serviceType);
-                    for (Integer index : relinquishIndexList) {
+                    for (Integer index : withdrawIndexList) {
                         ServiceInstance instance = serviceInstanceList.get(index);
                         double allocatedFreq = instance.getCurrentFrequncy();
                         POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() + PowerModel.getPowerPerFreq(allocatedFreq)));
                         serviceInstanceList.remove(index);
                         List<ServiceInstance> sortedInstanceList = new LinkedList<ServiceInstance>();
                         sortedInstanceList.addAll(serviceInstanceList);
-                        Collections.sort(sortedInstanceList, new QueuingTimeComparator(LATENCY_TYPE));
+                        Collections.sort(sortedInstanceList, new LatencyComparator(LATENCY_TYPE));
                         ServiceInstance fastestInstance = sortedInstanceList.get(sortedInstanceList.size() - 1);
                         fastestInstance.setLoadProb(instance.getLoadProb() + fastestInstance.getLoadProb());
                         // instead of shutting down, put the recycled service instance into the candidate list
                         instance.getQueuing_latency().clear();
                         instance.getServing_latency().clear();
+                        instance.setQueriesBetweenWithdraw(0);
                         candidateMap.get(serviceType).add(instance);
                         LOG.info("recycling the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " and the power budget recycled is " + PowerModel.getPowerPerFreq(allocatedFreq));
                         LOG.info("the current global power budget is " + POWER_BUDGET.get().doubleValue());
@@ -558,7 +569,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             LOG.info("==================================================");
             // sort the service instance based on the 99th queuing latency
-            Collections.sort(serviceInstanceList, new QueuingTimeComparator(LATENCY_TYPE));
+            Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
             String instanceRanking = "";
             String freqList = "";
             for (int i = 0; i < serviceInstanceList.size(); i++) {
@@ -926,10 +937,10 @@ public class CommandCenter implements SchedulerService.Iface {
     /**
      *
      */
-    private class QueuingTimeComparator implements Comparator<ServiceInstance> {
+    private class LatencyComparator implements Comparator<ServiceInstance> {
         private String latencyType;
 
-        public QueuingTimeComparator(String latencyType) {
+        public LatencyComparator(String latencyType) {
             this.latencyType = latencyType;
         }
 

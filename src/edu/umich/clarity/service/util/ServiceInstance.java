@@ -21,11 +21,13 @@ public class ServiceInstance {
     private double currentFrequncy;
     private double servingTimeAvg;
     private double queuingTimeAvg;
+    private int queriesBetweenWithdraw;
 
     public ServiceInstance() {
         this.queuing_latency = new LinkedList<Double>();
         this.serving_latency = new LinkedList<Double>();
         this.loadProb = 1;
+        this.queriesBetweenWithdraw = 0;
     }
 
     public List<Double> getQueuing_latency() {
@@ -122,5 +124,13 @@ public class ServiceInstance {
 
     public void setQueuingTimeAvg(double queuingTimeAvg) {
         this.queuingTimeAvg = queuingTimeAvg;
+    }
+
+    public int getQueriesBetweenWithdraw() {
+        return queriesBetweenWithdraw;
+    }
+
+    public void setQueriesBetweenWithdraw(int queriesBetweenWithdraw) {
+        this.queriesBetweenWithdraw = queriesBetweenWithdraw;
     }
 }
