@@ -23,16 +23,31 @@ import java.util.Random;
  * Created by hailong on 6/29/15.
  */
 public class StressClient {
-
+    // common definition
     public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
     private static final Logger LOG = Logger.getLogger(StressClient.class);
-    private static double mean = 600;
-    private static int num_client = 1000;
-    private static String SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     private static String SCHEDULER_IP = "localhost";
     private static int SCHEDULER_PORT = 8888;
     private static int WARMUP_COUNT = 20;
+    private static int num_client = 1000;
+    private static final String LOAD_TYPE_EXPONENTIAL = "exponential";
+    private static final String LOAD_TYPE_POISSON = "poisson";
+    private static final String LOAD_TYPE_BURST = "burst";
+    private static String loadType = LOAD_TYPE_BURST;
 
+    // for poisson load
+    private static double poisson_mean = 600;
+    private static String POISSON_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
+
+    // for burst load
+    private static double burst_high_mean = 600;
+    private static double burst_low_mean = 1000;
+    private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
+    private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1_1000.csv";
+    private static final int SWITCH_NUM = 200;
+    private static String OPERATION = "load";
+
+    // private static final String OPERATION = "load";
     public StressClient() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
@@ -41,39 +56,106 @@ public class StressClient {
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
     public static void main(String[] args) {
-        if (args.length == 5) {
-            SCHEDULER_IP = args[0];
-            SCHEDULER_PORT = Integer.valueOf(args[1]);
-            SAMPLE_FILE = args[2];
-            num_client = Integer.valueOf(args[3]);
-            WARMUP_COUNT = Integer.valueOf(args[4]);
-        }
-        StressClient client = new StressClient();
-//        client.genPoissonLoad(mean, num_client);
-//        client.genPoissonLoad();
-//        client.stablizePoissonSamples(mean, num_client);
-        LOG.info("start to warm up the services...");
-        client.genPoissonLoad(WARMUP_COUNT);
-        SchedulerService.Client schedulerClient = null;
-        try {
-            TClient clientDelegate = new TClient();
-            schedulerClient = clientDelegate.createSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
-            int finishedQueries = 0;
-            while ((finishedQueries = schedulerClient.warmupCount()) != WARMUP_COUNT) {
-                LOG.info("The number of warmed up queries is " + finishedQueries + ", sleep for 2s to check again");
-                Thread.sleep(2000);
+        if (OPERATION.equalsIgnoreCase("load")) {
+            if (args.length == 6) {
+                SCHEDULER_IP = args[0];
+                SCHEDULER_PORT = Integer.valueOf(args[1]);
+                POISSON_SAMPLE_FILE = args[2];
+                num_client = Integer.valueOf(args[3]);
+                WARMUP_COUNT = Integer.valueOf(args[4]);
+                loadType = args[5];
             }
-            clientDelegate.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (InterruptedException ex) {
+            StressClient client = new StressClient();
+            LOG.info("start to warm up the services...");
+            client.genPoissonLoad(WARMUP_COUNT);
+            SchedulerService.Client schedulerClient = null;
+            try {
+                TClient clientDelegate = new TClient();
+                schedulerClient = clientDelegate.createSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
+                int finishedQueries = 0;
+                while ((finishedQueries = schedulerClient.warmupCount()) != WARMUP_COUNT) {
+                    LOG.info("The number of warmed up queries is " + finishedQueries + ", sleep for 2s to check again");
+                    Thread.sleep(2000);
+                }
+                clientDelegate.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (InterruptedException ex) {
 
-        } catch (TException ex) {
+            } catch (TException ex) {
+
+            }
+            LOG.info("start to evaluate the tail latency...");
+            //TClient.close();
+            if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_BURST)) {
+                client.genBurstLoad(num_client);
+            } else if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_POISSON)) {
+                client.genPoissonLoad(num_client);
+            }
+        } else if (OPERATION.equalsIgnoreCase("sample")) {
+            StressClient client = new StressClient();
+            client.genBurstSamples(burst_high_mean, burst_low_mean, num_client / 2);
+        }
+    }
+
+    public void genBurstLoad(int num_client) {
+        String NEXT_STAGE = "asr";
+        List highSampleEntries = null;
+        List lowSampleEntries = null;
+        try {
+            CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator +
+                    BURST_HIGH_SAMPLE_FILE), ',');
+            highSampleEntries = reader.readAll();
+            reader.close();
+            reader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator +
+                    BURST_LOW_SAMPLE_FILE), ',');
+            lowSampleEntries = reader.readAll();
+            reader.close();
+
+        } catch (IOException ex) {
 
         }
-        LOG.info("start to evaluate the tail latency...");
-        //TClient.close();
-        client.genPoissonLoad(num_client);
+        String[] highSample = (String[]) highSampleEntries.get(0);
+        String[] lowSample = (String[]) lowSampleEntries.get(0);
+        int evaluateLength = (lowSample.length + highSample.length) > num_client ? num_client : (lowSample.length + highSample.length);
+        boolean sendingHighSample = false;
+        int lowSampleCounter = 0;
+        int highSampleCounter = 0;
+        for (int i = 0; i < evaluateLength; i++) {
+            try {
+                TClient clientDelegate = new TClient();
+                SchedulerService.Client schedulerClient = clientDelegate.createSchedulerClient(SCHEDULER_IP, SCHEDULER_PORT);
+                THostPort hostPort = schedulerClient.consultAddress(NEXT_STAGE);
+                clientDelegate.close();
+                clientDelegate = new TClient();
+                IPAService.Client serviceClient = clientDelegate.createIPAClient(hostPort.getIp(), hostPort.getPort());
+                QuerySpec query = new QuerySpec();
+                query.setName(Integer.toString(i));
+                query.setBudget(30000);
+                List<LatencySpec> timestamp = new LinkedList<LatencySpec>();
+                query.setTimestamp(timestamp);
+                serviceClient.submitQuery(query);
+                clientDelegate.close();
+                if (i % SWITCH_NUM == 0) {
+                    sendingHighSample = !sendingHighSample;
+                }
+                if (sendingHighSample) {
+                    LOG.info("Sending high load query " + i);
+                    Thread.sleep(Integer.valueOf(highSample[highSampleCounter]));
+                    highSampleCounter++;
+                } else {
+                    LOG.info("Sending low load query " + i);
+                    Thread.sleep(Integer.valueOf(lowSample[lowSampleCounter]));
+                    lowSampleCounter++;
+                }
+            } catch (TException e) {
+                e.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     /**
@@ -84,7 +166,7 @@ public class StressClient {
         List sampleEntries = null;
         try {
             CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator +
-                    SAMPLE_FILE), ',');
+                    POISSON_SAMPLE_FILE), ',');
             sampleEntries = reader.readAll();
         } catch (IOException ex) {
 
@@ -120,10 +202,10 @@ public class StressClient {
         }
     }
 
-    private void stablizePoissonSamples(double mean, int sampleNum) {
+    private void genPoissonSamples(double mean, int sampleNum) {
         PoissonDistribution poi_dist = new PoissonDistribution(mean);
         try {
-            CSVWriter sampleWriter = new CSVWriter(new FileWriter(SAMPLE_FILE), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            CSVWriter sampleWriter = new CSVWriter(new FileWriter(POISSON_SAMPLE_FILE), ',', CSVWriter.NO_QUOTE_CHARACTER);
             ArrayList<String> csvEntry = new ArrayList<String>();
             for (int i = 0; i < sampleNum; i++) {
                 csvEntry.add(poi_dist.sample() + "");
@@ -136,10 +218,35 @@ public class StressClient {
         }
     }
 
+    private void genBurstSamples(double high_mean, double low_mean, int sampleNum) {
+        PoissonDistribution burstLowDist = new PoissonDistribution(low_mean);
+        PoissonDistribution burstHighDist = new PoissonDistribution(high_mean);
+        try {
+            CSVWriter lowSampleWriter = new CSVWriter(new FileWriter(BURST_LOW_SAMPLE_FILE), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            CSVWriter highSampleWriter = new CSVWriter(new FileWriter(BURST_HIGH_SAMPLE_FILE), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            ArrayList<String> csvEntry = new ArrayList<String>();
+            for (int i = 0; i < sampleNum; i++) {
+                csvEntry.add(burstLowDist.sample() + "");
+            }
+            lowSampleWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            lowSampleWriter.flush();
+            lowSampleWriter.close();
+            csvEntry.clear();
+            for (int i = 0; i < sampleNum; i++) {
+                csvEntry.add(burstHighDist.sample() + "");
+            }
+            highSampleWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            highSampleWriter.flush();
+            highSampleWriter.close();
+        } catch (IOException ex) {
+
+        }
+    }
+
     /**
      * Generate the load that follows Poisson distribution.
      *
-     * @param mean       the mean time interval to submit each query
+     * @param mean       the poisson_mean time interval to submit each query
      * @param num_client that submitting the query concurrently
      */
     public void genPoissonLoad(double mean, int num_client) {

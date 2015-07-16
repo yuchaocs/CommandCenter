@@ -22,6 +22,7 @@ public class ServiceInstance {
     private double servingTimeAvg;
     private double queuingTimeAvg;
     private int queriesBetweenWithdraw;
+    private long renewTimestamp;
 
     public ServiceInstance() {
         this.queuing_latency = new LinkedList<Double>();
@@ -132,5 +133,13 @@ public class ServiceInstance {
 
     public void setQueriesBetweenWithdraw(int queriesBetweenWithdraw) {
         this.queriesBetweenWithdraw = queriesBetweenWithdraw;
+    }
+
+    public long getRenewTimestamp() {
+        return renewTimestamp;
+    }
+
+    public void setRenewTimestamp(long renewTimestamp) {
+        this.renewTimestamp = renewTimestamp;
     }
 }

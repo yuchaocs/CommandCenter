@@ -53,7 +53,6 @@ public class CommandCenter implements SchedulerService.Iface {
     private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static Map<String, Double> frequencyStat = new HashMap<String, Double>();
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
-    private static ConcurrentMap<String, Double> budgetMap = new ConcurrentHashMap<String, Double>();
     private static CSVWriter latencyWriter = null;
     private static CSVWriter frequencyWriter = null;
     private static CSVReader speedupReader = null;
@@ -62,10 +61,12 @@ public class CommandCenter implements SchedulerService.Iface {
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
-    private static String BOOSTING_DECISION = BoostDecision.FREQUENCY_BOOST;
+    private static String BOOSTING_DECISION = BoostDecision.ADAPTIVE_BOOST;
     private static final int MINIMUM_QUEUE_LENGTH = 3;
     private static long initialAdjustTimestamp;
-    private static long initialWithdrawTimestamp;
+
+    private static boolean WITHDRAW_SERVICE_INSTANCE = false;
+    // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
 
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
@@ -76,7 +77,7 @@ public class CommandCenter implements SchedulerService.Iface {
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
-        if (args.length == 9) {
+        if (args.length == 10) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
             ADJUST_BUDGET_INTERVAL = Integer.valueOf(args[1]);
             WITHDRAW_BUDGET_INTERVAL = Integer.valueOf(args[2]);
@@ -90,6 +91,11 @@ public class CommandCenter implements SchedulerService.Iface {
                 VANILLA_MODE = false;
             }
             BOOSTING_DECISION = args[8];
+            if (args[9].equalsIgnoreCase("withdraw")) {
+                WITHDRAW_SERVICE_INSTANCE = true;
+            } else if (args[9].equalsIgnoreCase("no-withdraw")) {
+                WITHDRAW_SERVICE_INSTANCE = false;
+            }
         }
         CommandCenter commandCenter = new CommandCenter();
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
@@ -262,7 +268,8 @@ public class CommandCenter implements SchedulerService.Iface {
                         instance.setLoadProb(loadProb);
                     }
                 } else {
-                    List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
+                    // List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
+                    List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
                     serviceInstanceList.add(serviceInstance);
                     serviceMap.put(appName, serviceInstanceList);
                 }
@@ -273,7 +280,8 @@ public class CommandCenter implements SchedulerService.Iface {
                 if (candidateMap.containsKey(appName)) {
                     candidateMap.get(appName).add(serviceInstance);
                 } else {
-                    List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
+                    // List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
+                    List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
                     serviceInstanceList.add(serviceInstance);
                     candidateMap.put(appName, serviceInstanceList);
                 }
@@ -323,11 +331,11 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             if (warmupCount.get() == WARMUP_COUNT) {
                 initialAdjustTimestamp = System.currentTimeMillis();
-                initialWithdrawTimestamp = initialAdjustTimestamp;
                 for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                     for (ServiceInstance instance : entry.getValue()) {
                         String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
                         frequencyStat.put(instanceId, instance.getCurrentFrequncy());
+                        instance.setRenewTimestamp(initialAdjustTimestamp);
                     }
                 }
             }
@@ -405,14 +413,16 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                         frequencyStat.clear();
                         initialAdjustTimestamp = currentTimestamp;
-                        if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
-                            withdrawServiceInstance();
-                            for (Map.Entry<String, List<ServiceInstance>> serviceEntry : serviceMap.entrySet()) {
-                                for (ServiceInstance instance : serviceEntry.getValue()) {
-                                    instance.setQueriesBetweenWithdraw(0);
+                        if (WITHDRAW_SERVICE_INSTANCE) {
+                            if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
+                                withdrawServiceInstance();
+                                for (Map.Entry<String, List<ServiceInstance>> serviceEntry : serviceMap.entrySet()) {
+                                    for (ServiceInstance instance : serviceEntry.getValue()) {
+                                        instance.setQueriesBetweenWithdraw(0);
+                                        instance.setRenewTimestamp(initialAdjustTimestamp);
+                                    }
                                 }
                             }
-                            initialWithdrawTimestamp = System.currentTimeMillis();
                         }
                         adjustPowerBudget();
                         for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
@@ -422,7 +432,6 @@ public class CommandCenter implements SchedulerService.Iface {
                                 frequencyStat.put(instanceId, instance.getCurrentFrequncy());
                             }
                         }
-                        // loadBalance();
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -436,9 +445,9 @@ public class CommandCenter implements SchedulerService.Iface {
          * new withdraw logic: if a service instance spends more than half of the withdraw interval in idle state, then withdraw it. Also in order to not be too aggressive, withdraw at most one instance of each service type.
          */
         private void withdrawServiceInstance() {
-            long timePeriod = System.currentTimeMillis() - initialWithdrawTimestamp;
+            long currentTimestamp = System.currentTimeMillis();
             LOG.info("==================================================");
-            LOG.info("start to recycle the service instances...");
+            LOG.info("start to withdraw the service instances...");
             LOG.info("scanning the queuing time of the past " + WITHDRAW_BUDGET_INTERVAL + " queries");
             Map<String, List<Integer>> withdrawMap = new HashMap<String, List<Integer>>();
             for (String serviceType : serviceMap.keySet()) {
@@ -454,7 +463,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                 servingTime += serviceInstance.getServing_latency().get(index);
                             }
                         }
-                        if (Double.compare(servingTime, new Double(timePeriod / 2.0)) < 0) {
+                        if (Double.compare(servingTime, new Double((currentTimestamp - serviceInstance.getRenewTimestamp()) / 2.0)) < 0) {
                             withdrawMap.get(serviceType).add(i);
                             break;
                         }
@@ -471,18 +480,15 @@ public class CommandCenter implements SchedulerService.Iface {
                         ServiceInstance instance = serviceInstanceList.get(index);
                         double allocatedFreq = instance.getCurrentFrequncy();
                         POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() + PowerModel.getPowerPerFreq(allocatedFreq)));
-                        serviceInstanceList.remove(index);
-                        List<ServiceInstance> sortedInstanceList = new LinkedList<ServiceInstance>();
-                        sortedInstanceList.addAll(serviceInstanceList);
-                        Collections.sort(sortedInstanceList, new LatencyComparator(LATENCY_TYPE));
-                        ServiceInstance fastestInstance = sortedInstanceList.get(sortedInstanceList.size() - 1);
-                        fastestInstance.setLoadProb(instance.getLoadProb() + fastestInstance.getLoadProb());
-                        // instead of shutting down, put the recycled service instance into the candidate list
+                        serviceInstanceList.remove(index.intValue());
+                        Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
+                        ServiceInstance fastestInstance = serviceInstanceList.get(serviceInstanceList.size() - 1);
+                        fastestInstance.setLoadProb(fastestInstance.getLoadProb() + instance.getLoadProb());
                         instance.getQueuing_latency().clear();
                         instance.getServing_latency().clear();
                         instance.setQueriesBetweenWithdraw(0);
                         candidateMap.get(serviceType).add(instance);
-                        LOG.info("recycling the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " and the power budget recycled is " + PowerModel.getPowerPerFreq(allocatedFreq));
+                        LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " and the power budget recycled is " + PowerModel.getPowerPerFreq(allocatedFreq));
                         LOG.info("the current global power budget is " + POWER_BUDGET.get().doubleValue());
                         withdrawNum++;
                         if (serviceInstanceList.size() == 1) {
@@ -572,14 +578,17 @@ public class CommandCenter implements SchedulerService.Iface {
             Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
             String instanceRanking = "";
             String freqList = "";
+            String loadProb = "";
             for (int i = 0; i < serviceInstanceList.size(); i++) {
                 ServiceInstance instance = serviceInstanceList.get(i);
                 instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort() + "-->";
                 freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy() + "-->";
+                loadProb += instance.getServiceType() + "@" + instance.getLoadProb() + "-->";
             }
             LOG.info("service instance ranking from slowest to fastest");
             LOG.info(instanceRanking);
             LOG.info(freqList);
+            LOG.info(loadProb);
             double slowestQueuingTimeAvg = serviceInstanceList.get(0).getQueuingTimeAvg();
             double slowestServingTimeAvg = serviceInstanceList.get(0).getServingTimeAvg();
             double fastestQueuingTimeAvg = serviceInstanceList.get(serviceInstanceList.size() - 1).getQueuingTimeAvg();
@@ -657,7 +666,8 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 if (instance.getCurrentQueueLength() < MINIMUM_QUEUE_LENGTH) {
                     double currentFreq = instance.getCurrentFrequncy();
-                    double increasedFreq = freqRangeList.get(freqRangeList.indexOf(currentFreq) + 1);
+                    int increaseByHalf = (freqRangeList.size() - freqRangeList.indexOf(currentFreq)) / 2;
+                    double increasedFreq = freqRangeList.get(freqRangeList.indexOf(currentFreq) + increaseByHalf);
                     requiredPowerFreq = PowerModel.getPowerPerFreq(increasedFreq) - PowerModel.getPowerPerFreq(currentFreq);
                     decision.setDecision(BoostDecision.FREQUENCY_BOOST);
                     decision.setRequiredPower(requiredPowerFreq);
@@ -858,6 +868,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 candidateInstance.setLoadProb(loadProb);
                 instanceList.remove(0);
                 int stealedQueries = 0;
+                candidateInstance.setRenewTimestamp(System.currentTimeMillis());
                 serviceMap.get(serviceType).add(candidateInstance);
                 try {
                     TClient clientDelegate = new TClient();
