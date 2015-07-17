@@ -36,6 +36,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // headers for the CSV result files
     private static final String[] LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
     private static final String[] FREQUENCY_FILE_HEADER = {"service_instance", "timestamp", "frequency"};
+    private static final String[] EXPECTED_DELAY_FILE_HEADER = {"service_instance", "expected_delay"};
     private static final double DEFAULT_FREQUENCY = 1.8;
     private static double GLOBAL_POWER_BUDGET = 9.48 * 3;
     private static int SCHEDULER_PORT = 8888;
@@ -55,6 +56,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static CSVWriter latencyWriter = null;
     private static CSVWriter frequencyWriter = null;
+    private static CSVWriter expectedDelayWriter = null;
     private static CSVReader speedupReader = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
@@ -65,8 +67,10 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final int MINIMUM_QUEUE_LENGTH = 3;
     private static long initialAdjustTimestamp;
 
-    private static boolean WITHDRAW_SERVICE_INSTANCE = false;
+    private static boolean WITHDRAW_SERVICE_INSTANCE = true;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
+
+    private static int ADAPTIVE_ADJUST_ROUND = 0;
 
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
@@ -128,10 +132,13 @@ public class CommandCenter implements SchedulerService.Iface {
             speedupReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "freq.csv"), ',', '\n', 1);
             latencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             frequencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "frequency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            expectedDelayWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "expected_delay.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             latencyWriter.writeNext(LATENCY_FILE_HEADER);
             latencyWriter.flush();
             frequencyWriter.writeNext(FREQUENCY_FILE_HEADER);
             frequencyWriter.flush();
+            expectedDelayWriter.writeNext(EXPECTED_DELAY_FILE_HEADER);
+            expectedDelayWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -515,6 +522,8 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("==================================================");
             LOG.info("adjust the power budget...");
             LOG.info("ranking the service instance based on the estimated delay((avg_queuing_time + avg_serving_time)*queue_length)");
+            ADAPTIVE_ADJUST_ROUND++;
+            expectedDelayWriter.writeNext(new String[]{"" + ADAPTIVE_ADJUST_ROUND});
             List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
             Percentile percentile = new Percentile();
             for (String serviceType : serviceMap.keySet()) {
@@ -561,6 +570,14 @@ public class CommandCenter implements SchedulerService.Iface {
                             double estimatedLatency = instance.getCurrentQueueLength() == 0 ? (instance.getQueuingTimeAvg() + instance.getServingTimeAvg()) : instance.getCurrentQueueLength() * (instance.getQueuingTimeAvg() + instance.getServingTimeAvg());
                             LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
                             LOG.info("average queuing time: " + instance.getQueuingTimeAvg() + "; queue length: " + currentQueueLength + "; 99th queuing time: " + instance.getQueuingTimePercentile() + "; average serving time: " + (totalServing / statLength) + "; 99th serving time: " + instance.getServingTimePercentile() + "; estimated queuing time: " + estimatedLatency);
+                            ArrayList<String> csvEntry = new ArrayList<String>();
+                            csvEntry.add(instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort());
+                            expectedDelayWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                            try {
+                                expectedDelayWriter.flush();
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
                         }
                     } else {
                         instance.setQueuingTimeAvg(0);
