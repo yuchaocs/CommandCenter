@@ -523,7 +523,6 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("adjust the power budget...");
             LOG.info("ranking the service instance based on the estimated delay((avg_queuing_time + avg_serving_time)*queue_length)");
             ADAPTIVE_ADJUST_ROUND++;
-            expectedDelayWriter.writeNext(new String[]{"" + ADAPTIVE_ADJUST_ROUND});
             List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
             Percentile percentile = new Percentile();
             for (String serviceType : serviceMap.keySet()) {
@@ -571,7 +570,9 @@ public class CommandCenter implements SchedulerService.Iface {
                             LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
                             LOG.info("average queuing time: " + instance.getQueuingTimeAvg() + "; queue length: " + currentQueueLength + "; 99th queuing time: " + instance.getQueuingTimePercentile() + "; average serving time: " + (totalServing / statLength) + "; 99th serving time: " + instance.getServingTimePercentile() + "; estimated queuing time: " + estimatedLatency);
                             ArrayList<String> csvEntry = new ArrayList<String>();
+                            csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
                             csvEntry.add(instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort());
+                            csvEntry.add("" + estimatedLatency);
                             expectedDelayWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                             try {
                                 expectedDelayWriter.flush();
