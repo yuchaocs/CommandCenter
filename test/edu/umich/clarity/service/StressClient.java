@@ -47,8 +47,8 @@ public class StressClient {
     private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1_1000.csv";
     private static final int SWITCH_NUM = 200;
-    //private static String OPERATION = "load";
-    private static String OPERATION = "sample";
+    private static String OPERATION = "load";
+    //private static String OPERATION = "sample";
 
     // private static final String OPERATION = "load";
     public StressClient() {
@@ -60,13 +60,14 @@ public class StressClient {
      */
     public static void main(String[] args) {
         if (OPERATION.equalsIgnoreCase("load")) {
-            if (args.length == 6) {
+            if (args.length == 7) {
                 SCHEDULER_IP = args[0];
                 SCHEDULER_PORT = Integer.valueOf(args[1]);
                 POISSON_SAMPLE_FILE = args[2];
                 num_client = Integer.valueOf(args[3]);
                 WARMUP_COUNT = Integer.valueOf(args[4]);
                 loadType = args[5];
+                OPERATION = args[6];
             }
             StressClient client = new StressClient();
             LOG.info("start to warm up the services...");
