@@ -36,10 +36,10 @@ public class StressClient {
     private static String loadType = LOAD_TYPE_POISSON;
 
     // for poisson load
-    private static double poisson_mean = 4500;
+    private static double poisson_mean = 1000;
     // private static String POISSON_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     //private static String POISSON_SAMPLE_FILE = "poisson_sample_.8_1000.csv";
-    private static String POISSON_SAMPLE_FILE = "poisson_sample_4.5_1000.csv";
+    private static String POISSON_SAMPLE_FILE = "poisson_sample_1.0_1000.csv";
 
     // for burst load
     private static double burst_high_mean = 600;
@@ -58,17 +58,17 @@ public class StressClient {
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
     public static void main(String[] args) {
-        if (args[6].equalsIgnoreCase("load")) {
-            if (args.length == 7) {
-                SCHEDULER_IP = args[0];
-                SCHEDULER_PORT = Integer.valueOf(args[1]);
-                POISSON_SAMPLE_FILE = args[2];
-                num_client = Integer.valueOf(args[3]);
-                WARMUP_COUNT = Integer.valueOf(args[4]);
-                loadType = args[5];
-                OPERATION = args[6];
-            }
-            StressClient client = new StressClient();
+        if (args.length == 7) {
+            SCHEDULER_IP = args[0];
+            SCHEDULER_PORT = Integer.valueOf(args[1]);
+            POISSON_SAMPLE_FILE = args[2];
+            num_client = Integer.valueOf(args[3]);
+            WARMUP_COUNT = Integer.valueOf(args[4]);
+            loadType = args[5];
+            OPERATION = args[6];
+        }
+        StressClient client = new StressClient();
+        if (OPERATION.equalsIgnoreCase("load")) {
             LOG.info("start to warm up the services...");
             client.genPoissonLoad(WARMUP_COUNT);
             SchedulerService.Client schedulerClient = null;
@@ -88,15 +88,14 @@ public class StressClient {
             } catch (TException ex) {
 
             }
-            LOG.info("start to evaluate the tail latency...");
-            //TClient.close();
+            LOG.info("start to evaluate the tail latency with " + loadType + " distribution");
             if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_BURST)) {
                 client.genBurstLoad(num_client);
             } else if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_POISSON)) {
                 client.genPoissonLoad(num_client);
             }
-        } else if (args[6].equalsIgnoreCase("sample")) {
-            StressClient client = new StressClient();
+        } else if (OPERATION.equalsIgnoreCase("sample")) {
+            LOG.info("start to generate sample files with " + loadType + " distribution");
             if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_BURST)) {
                 client.genBurstSamples(burst_high_mean, burst_low_mean, num_client / 2);
             } else if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_POISSON)) {
