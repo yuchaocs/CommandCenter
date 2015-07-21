@@ -73,6 +73,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static int ADAPTIVE_ADJUST_ROUND = 0;
 
     public CommandCenter() {
+        System.out.println(System.getProperty("user.dir"));
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
 
@@ -81,6 +82,7 @@ public class CommandCenter implements SchedulerService.Iface {
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
+        System.getProperty("the length of the arguments is " + args.length);
         LOG.info("the length of the arguments is " + args.length);
         if (args.length == 10) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
