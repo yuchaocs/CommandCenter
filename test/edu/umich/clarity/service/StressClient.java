@@ -175,6 +175,7 @@ public class StressClient {
         try {
             CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator +
                     POISSON_SAMPLE_FILE), ',');
+            LOG.info("using the sample file: " + POISSON_SAMPLE_FILE);
             sampleEntries = reader.readAll();
         } catch (IOException ex) {
 
@@ -198,6 +199,7 @@ public class StressClient {
                     serviceClient.submitQuery(query);
                     clientDelegate.close();
                     LOG.info("Sending query " + i);
+                    LOG.info("and sleep for " + Integer.valueOf(sample[i]) + " ms");
                     Thread.sleep(Integer.valueOf(sample[i]));
                 } catch (TException e) {
                     e.printStackTrace();
