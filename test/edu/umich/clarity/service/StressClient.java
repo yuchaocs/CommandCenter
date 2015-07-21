@@ -36,10 +36,10 @@ public class StressClient {
     private static String loadType = LOAD_TYPE_POISSON;
 
     // for poisson load
-    private static double poisson_mean = 700;
+    private static double poisson_mean = 50;
     // private static String POISSON_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     //private static String POISSON_SAMPLE_FILE = "poisson_sample_.8_1000.csv";
-    private static String POISSON_SAMPLE_FILE = "poisson_sample_.7_1000.csv";
+    private static String POISSON_SAMPLE_FILE = "poisson_sample_.05_1000.csv";
 
     // for burst load
     private static double burst_high_mean = 600;
@@ -47,10 +47,9 @@ public class StressClient {
     private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1_1000.csv";
     private static final int SWITCH_NUM = 200;
-    private static String OPERATION = "load";
-    //private static String OPERATION = "sample";
+    // private static String OPERATION = "load";
+    private static String OPERATION = "sample";
 
-    // private static final String OPERATION = "load";
     public StressClient() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
