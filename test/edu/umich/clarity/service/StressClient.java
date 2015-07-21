@@ -198,8 +198,7 @@ public class StressClient {
                     query.setTimestamp(timestamp);
                     serviceClient.submitQuery(query);
                     clientDelegate.close();
-                    LOG.info("Sending query " + i);
-                    LOG.info("and sleep for " + Integer.valueOf(sample[i]) + " ms");
+                    LOG.info("Sending query " + i + " and sleep for " + Integer.valueOf(sample[i]) + " ms");
                     Thread.sleep(Integer.valueOf(sample[i]));
                 } catch (TException e) {
                     e.printStackTrace();
