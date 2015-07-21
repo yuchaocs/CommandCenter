@@ -81,6 +81,7 @@ public class CommandCenter implements SchedulerService.Iface {
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
+        LOG.info("the length of the arguments is " + args.length);
         if (args.length == 10) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
             ADJUST_BUDGET_INTERVAL = Integer.valueOf(args[1]);
