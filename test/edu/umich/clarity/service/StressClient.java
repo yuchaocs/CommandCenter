@@ -36,10 +36,10 @@ public class StressClient {
     private static String loadType = LOAD_TYPE_POISSON;
 
     // for poisson load
-    private static double poisson_mean = 50;
+    private static double poisson_mean = 4500;
     // private static String POISSON_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     //private static String POISSON_SAMPLE_FILE = "poisson_sample_.8_1000.csv";
-    private static String POISSON_SAMPLE_FILE = "poisson_sample_.05_1000.csv";
+    private static String POISSON_SAMPLE_FILE = "poisson_sample_4.5_1000.csv";
 
     // for burst load
     private static double burst_high_mean = 600;
@@ -47,7 +47,7 @@ public class StressClient {
     private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1_1000.csv";
     private static final int SWITCH_NUM = 200;
-    // private static String OPERATION = "load";
+    //private static String OPERATION = "load";
     private static String OPERATION = "sample";
 
     public StressClient() {
@@ -58,7 +58,7 @@ public class StressClient {
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
     public static void main(String[] args) {
-        if (OPERATION.equalsIgnoreCase("load")) {
+        if (args[6].equalsIgnoreCase("load")) {
             if (args.length == 7) {
                 SCHEDULER_IP = args[0];
                 SCHEDULER_PORT = Integer.valueOf(args[1]);
@@ -95,7 +95,7 @@ public class StressClient {
             } else if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_POISSON)) {
                 client.genPoissonLoad(num_client);
             }
-        } else if (OPERATION.equalsIgnoreCase("sample")) {
+        } else if (args[6].equalsIgnoreCase("sample")) {
             StressClient client = new StressClient();
             if (loadType.equalsIgnoreCase(StressClient.LOAD_TYPE_BURST)) {
                 client.genBurstSamples(burst_high_mean, burst_low_mean, num_client / 2);
@@ -174,6 +174,7 @@ public class StressClient {
         try {
             CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator +
                     POISSON_SAMPLE_FILE), ',');
+            LOG.info("using the sample file: " + POISSON_SAMPLE_FILE);
             sampleEntries = reader.readAll();
         } catch (IOException ex) {
 
@@ -196,7 +197,7 @@ public class StressClient {
                     query.setTimestamp(timestamp);
                     serviceClient.submitQuery(query);
                     clientDelegate.close();
-                    LOG.info("Sending query " + i);
+                    LOG.info("Sending query " + i + " and sleep for " + Integer.valueOf(sample[i]) + " ms");
                     Thread.sleep(Integer.valueOf(sample[i]));
                 } catch (TException e) {
                     e.printStackTrace();
