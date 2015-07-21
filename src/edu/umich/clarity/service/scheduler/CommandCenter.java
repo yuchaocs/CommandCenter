@@ -29,7 +29,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // save for future use
     // private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
     // private static final int NODE_MANAGER_PORT = 8060;
-    public static final Logger LOG = Logger.getLogger(CommandCenter.class);
+    private static final Logger LOG = Logger.getLogger(CommandCenter.class);
     // best effort or guarantee
     private static final long LATENCY_BUDGET = 100;
     private static final List<String> sirius_workflow = new LinkedList<String>();
@@ -81,6 +81,7 @@ public class CommandCenter implements SchedulerService.Iface {
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
+        CommandCenter commandCenter = new CommandCenter();
         if (args.length == 10) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
             ADJUST_BUDGET_INTERVAL = Integer.valueOf(args[1]);
@@ -104,7 +105,6 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("global power budget: " + GLOBAL_POWER_BUDGET + ", adjust interval: " + ADJUST_BUDGET_INTERVAL + ", adjust threshold: " + ADJUST_THRESHOLD + ", latency percentile: " + LATENCY_PERCENTILE);
             LOG.info("boosting policy: " + BOOSTING_DECISION + ", withdraw mode: " + args[9] + ", withdraw interval " + WITHDRAW_BUDGET_INTERVAL);
         }
-        CommandCenter commandCenter = new CommandCenter();
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
                 commandCenter);
         TServers.launchSingleThreadThriftServer(SCHEDULER_PORT, processor);
