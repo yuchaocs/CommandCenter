@@ -100,6 +100,9 @@ public class CommandCenter implements SchedulerService.Iface {
             } else if (args[9].equalsIgnoreCase("no-withdraw")) {
                 WITHDRAW_SERVICE_INSTANCE = false;
             }
+            LOG.info("launching the command center with " + VANILLA_MODE + " mode");
+            LOG.info("global power budget: " + GLOBAL_POWER_BUDGET + ", adjust interval: " + ADJUST_BUDGET_INTERVAL + ", adjust threshold: " + ADJUST_THRESHOLD + ", latency percentile: " + LATENCY_PERCENTILE);
+            LOG.info("boosting policy: " + BOOSTING_DECISION + ", withdraw mode: " + args[9] + ", withdraw interval " + WITHDRAW_BUDGET_INTERVAL);
         }
         CommandCenter commandCenter = new CommandCenter();
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
