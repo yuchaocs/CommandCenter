@@ -82,7 +82,7 @@ public class CommandCenter implements SchedulerService.Iface {
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
-        System.getProperty("the length of the arguments is " + args.length);
+        System.out.println("the length of the arguments is " + args.length);
         LOG.info("the length of the arguments is " + args.length);
         if (args.length == 10) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
@@ -111,6 +111,7 @@ public class CommandCenter implements SchedulerService.Iface {
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
                 commandCenter);
         TServers.launchSingleThreadThriftServer(SCHEDULER_PORT, processor);
+        LOG.info("the length of the arguments is " + args.length);
         LOG.info("starting command center at port " + SCHEDULER_PORT);
         commandCenter.initialize();
     }
