@@ -527,6 +527,7 @@ public class CommandCenter implements SchedulerService.Iface {
             Percentile percentile = new Percentile();
             for (String serviceType : serviceMap.keySet()) {
                 for (ServiceInstance instance : serviceMap.get(serviceType)) {
+                    double estimatedLatency = 0;
                     if (instance.getQueuing_latency().size() != 0) {
                         Double statNum = ADJUST_BUDGET_INTERVAL * instance.getLoadProb();
                         int start_index = instance.getServing_latency().size() - statNum.intValue() - 1;
@@ -566,19 +567,17 @@ public class CommandCenter implements SchedulerService.Iface {
                             queuingPercentileValue = percentile.evaluate(evaluateQueuingArray, LATENCY_PERCENTILE);
                             instance.setServingTimePercentile(servingPercentileValue);
                             instance.setQueuingTimePercentile(queuingPercentileValue);
-                            double estimatedLatency = instance.getCurrentQueueLength() == 0 ? (instance.getQueuingTimeAvg() + instance.getServingTimeAvg()) : instance.getCurrentQueueLength() * (instance.getQueuingTimeAvg() + instance.getServingTimeAvg());
+                            estimatedLatency = instance.getCurrentQueueLength() == 0 ? (instance.getQueuingTimeAvg() + instance.getServingTimeAvg()) : instance.getCurrentQueueLength() * (instance.getQueuingTimeAvg() + instance.getServingTimeAvg());
                             LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
                             LOG.info("average queuing time: " + instance.getQueuingTimeAvg() + "; queue length: " + currentQueueLength + "; 99th queuing time: " + instance.getQueuingTimePercentile() + "; average serving time: " + (totalServing / statLength) + "; 99th serving time: " + instance.getServingTimePercentile() + "; estimated queuing time: " + estimatedLatency);
-                            ArrayList<String> csvEntry = new ArrayList<String>();
-                            csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
-                            csvEntry.add(instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort());
-                            csvEntry.add("" + estimatedLatency);
-                            expectedDelayWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                            try {
-                                expectedDelayWriter.flush();
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            }
+
+                        } else {
+                            instance.setQueuingTimeAvg(0);
+                            instance.setCurrentQueueLength(0);
+                            instance.setServingTimeAvg(0);
+                            instance.setServingTimePercentile(0);
+                            instance.setQueuingTimePercentile(0);
+                            LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries during last adjust interval");
                         }
                     } else {
                         instance.setQueuingTimeAvg(0);
@@ -586,7 +585,17 @@ public class CommandCenter implements SchedulerService.Iface {
                         instance.setServingTimeAvg(0);
                         instance.setServingTimePercentile(0);
                         instance.setQueuingTimePercentile(0);
-                        LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with 0 finished queries");
+                        LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries after it is started");
+                    }
+                    ArrayList<String> csvEntry = new ArrayList<String>();
+                    csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
+                    csvEntry.add(instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort());
+                    csvEntry.add("" + estimatedLatency);
+                    expectedDelayWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                    try {
+                        expectedDelayWriter.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
                 }
                 serviceInstanceList.addAll(serviceMap.get(serviceType));
