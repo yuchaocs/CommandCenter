@@ -36,10 +36,10 @@ public class StressClient {
     private static String loadType = LOAD_TYPE_POISSON;
 
     // for poisson load
-    private static double poisson_mean = 1000;
+    private static double poisson_mean = 1900;
     // private static String POISSON_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     //private static String POISSON_SAMPLE_FILE = "poisson_sample_.8_1000.csv";
-    private static String POISSON_SAMPLE_FILE = "poisson_sample_1.0_1000.csv";
+    private static String POISSON_SAMPLE_FILE = "poisson_sample_1.9_1000.csv";
 
     // for burst load
     private static double burst_high_mean = 600;
