@@ -44,9 +44,9 @@ public class StressClient {
     // for burst load
     private static double burst_high_mean = 600;
     private static double burst_low_mean = 1000;
-    private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
-    private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1_1000.csv";
-    private static final int SWITCH_NUM = 200;
+    private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.9_1000.csv";
+    private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1.4_1000.csv";
+    private static int BURST_SWITCH_NUM = 200;
     //private static String OPERATION = "load";
     private static String OPERATION = "sample";
 
@@ -58,7 +58,7 @@ public class StressClient {
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
     public static void main(String[] args) {
-        if (args.length == 7) {
+        if (args.length == 10) {
             SCHEDULER_IP = args[0];
             SCHEDULER_PORT = Integer.valueOf(args[1]);
             POISSON_SAMPLE_FILE = args[2];
@@ -66,6 +66,9 @@ public class StressClient {
             WARMUP_COUNT = Integer.valueOf(args[4]);
             loadType = args[5];
             OPERATION = args[6];
+            BURST_HIGH_SAMPLE_FILE = args[7];
+            BURST_LOW_SAMPLE_FILE = args[8];
+            BURST_SWITCH_NUM = Integer.valueOf(args[9]);
         }
         StressClient client = new StressClient();
         if (OPERATION.equalsIgnoreCase("load")) {
@@ -142,7 +145,7 @@ public class StressClient {
                 query.setTimestamp(timestamp);
                 serviceClient.submitQuery(query);
                 clientDelegate.close();
-                if (i % SWITCH_NUM == 0) {
+                if (i % BURST_SWITCH_NUM == 0) {
                     sendingHighSample = !sendingHighSample;
                 }
                 if (sendingHighSample) {
