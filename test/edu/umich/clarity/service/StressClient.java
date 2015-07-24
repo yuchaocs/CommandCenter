@@ -149,11 +149,11 @@ public class StressClient {
                     sendingHighSample = !sendingHighSample;
                 }
                 if (sendingHighSample) {
-                    LOG.info("Sending high load query " + i);
+                    LOG.info("Sending high load query " + i + " and sleep for " + Integer.valueOf(highSample[highSampleCounter]) + " ms");
                     Thread.sleep(Integer.valueOf(highSample[highSampleCounter]));
                     highSampleCounter++;
                 } else {
-                    LOG.info("Sending low load query " + i);
+                    LOG.info("Sending low load query " + i+ " and sleep for " + Integer.valueOf(lowSample[lowSampleCounter]) + " ms");
                     Thread.sleep(Integer.valueOf(lowSample[lowSampleCounter]));
                     lowSampleCounter++;
                 }
