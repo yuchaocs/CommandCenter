@@ -496,11 +496,24 @@ public class CommandCenter implements SchedulerService.Iface {
                         Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
                         ServiceInstance fastestInstance = serviceInstanceList.get(serviceInstanceList.size() - 1);
                         fastestInstance.setLoadProb(fastestInstance.getLoadProb() + instance.getLoadProb());
+
+                        double servingTime = 0;
+                        int statisticLength = instance.getServing_latency().size() - instance.getQueriesBetweenWithdraw();
+                        if (statisticLength <= instance.getServing_latency().size() - 1) {
+                            for (int indexTemp = statisticLength; indexTemp < instance.getServing_latency().size(); indexTemp++) {
+                                servingTime += instance.getServing_latency().get(indexTemp);
+                            }
+                        }
+                        LOG.info("the cumulated serving time is " + servingTime + " compared to half of the elapsed time " + new Double((currentTimestamp - instance.getRenewTimestamp()) / 2.0));
+
+
                         instance.getQueuing_latency().clear();
                         instance.getServing_latency().clear();
                         instance.setQueriesBetweenWithdraw(0);
                         candidateMap.get(serviceType).add(instance);
                         LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " and the power budget recycled is " + PowerModel.getPowerPerFreq(allocatedFreq));
+
+
                         LOG.info("the current global power budget is " + POWER_BUDGET.get().doubleValue());
                         withdrawNum++;
                         if (serviceInstanceList.size() == 1) {
