@@ -15,7 +15,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -24,7 +27,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
-    public static boolean VANILLA_MODE = false;
     public static final String LATENCY_TYPE = "average";
     // save for future use
     // private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
@@ -38,6 +40,8 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final String[] FREQUENCY_FILE_HEADER = {"adjust_id", "service_instance", "timestamp", "frequency"};
     private static final String[] EXPECTED_DELAY_FILE_HEADER = {"time", "service_instance", "expected_delay"};
     private static final double DEFAULT_FREQUENCY = 1.8;
+    private static final int MINIMUM_QUEUE_LENGTH = 3;
+    public static boolean VANILLA_MODE = false;
     private static double GLOBAL_POWER_BUDGET = 9.48 * 3;
     private static int SCHEDULER_PORT = 8888;
     // the interval to adjust power budget (per queries)
@@ -62,15 +66,12 @@ public class CommandCenter implements SchedulerService.Iface {
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
-    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
     private static String BOOSTING_DECISION = BoostDecision.ADAPTIVE_BOOST;
-    private static final int MINIMUM_QUEUE_LENGTH = 3;
     private static long initialAdjustTimestamp;
-
     private static boolean WITHDRAW_SERVICE_INSTANCE = true;
-    // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
-
     private static int ADAPTIVE_ADJUST_ROUND = 0;
+    // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
+    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
@@ -634,7 +635,33 @@ public class CommandCenter implements SchedulerService.Iface {
                 BoostDecision decision = predictBoostDecision(slowestInstance);
                 serviceInstanceList.remove(0);
                 // relocate the power budget, if true perform the boosting decision
-                if (relocatePowerBudget(serviceInstanceList, decision.getRequiredPower())) {
+                boolean accommodateDecision = true;
+                if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                    accommodateDecision = relocatePowerBudget(serviceInstanceList, decision.getRequiredPower());
+                } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
+                    while (!relocatePowerBudget(serviceInstanceList, decision.getRequiredPower())) {
+                        int freqIndex = freqRangeList.indexOf(decision.getFrequency());
+                        if (freqIndex > 0) {
+                            if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
+                                int slowFreqIndex = freqRangeList.indexOf(slowestInstance.getCurrentFrequncy());
+                                if (freqIndex == (slowFreqIndex + 1)) {
+                                    accommodateDecision = false;
+                                    break;
+                                }
+                            }
+                            double currentPower = PowerModel.getPowerPerFreq(decision.getFrequency());
+                            double reducedPower = PowerModel.getPowerPerFreq(freqRangeList.get(freqIndex - 1));
+                            decision.setRequiredPower(decision.getRequiredPower() - (currentPower - reducedPower));
+                            decision.setFrequency(freqRangeList.get(freqIndex - 1));
+                        } else {
+                            accommodateDecision = false;
+                            break;
+                        }
+                        LOG.info("the recycled power is not capable to fully perform the boosting decision");
+                        LOG.info("decreasing the frequency from " + freqRangeList.get(freqIndex) + "--->" + decision.getFrequency() + "GHz");
+                    }
+                }
+                if (accommodateDecision) {
                     if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
                         IPAService.Client client = null;
                         double oldFreq = slowestInstance.getCurrentFrequncy();
