@@ -328,13 +328,13 @@ public class CommandCenter implements SchedulerService.Iface {
                     csvEntry.add("" + queuing_time);
                     csvEntry.add("" + serving_time);
                     csvEntry.add("" + latencySpec.getInstance_id());
-                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
-                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
+//                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
+//                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
                 }
-                LOG.info("Query " + query.getName() + ": total queuing "
-                        + total_queuing + "ms" + " total serving " + total_serving
-                        + "ms" + " at all stages with total latency "
-                        + (total_queuing + total_serving) + "ms");
+//                LOG.info("Query " + query.getName() + ": total queuing "
+//                        + total_queuing + "ms" + " total serving " + total_serving
+//                        + "ms" + " at all stages with total latency "
+//                        + (total_queuing + total_serving) + "ms");
                 csvEntry.add("" + total_queuing);
                 csvEntry.add("" + total_serving);
                 latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
