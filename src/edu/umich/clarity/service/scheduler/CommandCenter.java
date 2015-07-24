@@ -678,6 +678,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                         LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
                     } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                        slowestInstance.setCurrentFrequncy(decision.getFrequency());
                         launchServiceInstance(slowestInstance);
                     }
                 } else {
@@ -718,6 +719,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(index - 1));
                 } else {
                     decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                    decision.setFrequency(instance.getCurrentFrequncy());
                     decision.setRequiredPower(requiredPowerInstance);
                     LOG.info("service boosting decision: (instance boosting), the slowest service instance already running at maximum frequency");
                     return decision;
@@ -773,6 +775,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 } else {
                     LOG.info("service boosting decision: (instance boosting)" + " with tail latency " + tailLatencyInstance + " compared to " + tailLatencyFreq + " if increasing the frequency");
                     decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                    decision.setFrequency(instance.getCurrentFrequncy());
                     decision.setRequiredPower(requiredPowerInstance);
                 }
                 // 1. calculate the tail latency of frequency boosting
