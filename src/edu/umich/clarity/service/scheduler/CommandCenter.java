@@ -328,13 +328,13 @@ public class CommandCenter implements SchedulerService.Iface {
                     csvEntry.add("" + queuing_time);
                     csvEntry.add("" + serving_time);
                     csvEntry.add("" + latencySpec.getInstance_id());
-//                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
-//                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
+                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
+                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
                 }
-//                LOG.info("Query " + query.getName() + ": total queuing "
-//                        + total_queuing + "ms" + " total serving " + total_serving
-//                        + "ms" + " at all stages with total latency "
-//                        + (total_queuing + total_serving) + "ms");
+                LOG.info("Query " + query.getName() + ": total queuing "
+                        + total_queuing + "ms" + " total serving " + total_serving
+                        + "ms" + " at all stages with total latency "
+                        + (total_queuing + total_serving) + "ms");
                 csvEntry.add("" + total_queuing);
                 csvEntry.add("" + total_serving);
                 latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
@@ -451,12 +451,19 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
 
+        private void withdrawServiceInstance() {
+            LOG.info("==================================================");
+            LOG.info("start to withdraw the service instances...");
+            LOG.info("scanning the queuing time of the past " + WITHDRAW_BUDGET_INTERVAL + " queries");
+            LOG.info("==================================================");
+        }
+
         /**
          * Every WITHDRAW_BUDGET_INTERVAL queries, if the queuing time of a service instance keeps zero and there are multiple instances of that service type available, stop one service instance and relinquish the power budget.
          * FIXME withdraw logic is too rigid that no service instance can be withdrew
          * new withdraw logic: if a service instance spends more than half of the withdraw interval in idle state, then withdraw it. Also in order to not be too aggressive, withdraw at most one instance of each service type.
          */
-        private void withdrawServiceInstance() {
+        private void withdrawServiceInstance(int random) {
             long currentTimestamp = System.currentTimeMillis();
             LOG.info("==================================================");
             LOG.info("start to withdraw the service instances...");
