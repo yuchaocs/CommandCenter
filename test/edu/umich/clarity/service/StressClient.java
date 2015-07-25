@@ -29,17 +29,17 @@ public class StressClient {
     private static String SCHEDULER_IP = "localhost";
     private static int SCHEDULER_PORT = 8888;
     private static int WARMUP_COUNT = 20;
-    private static int num_client = 1000;
+    private static int num_client = 10000;
     private static final String LOAD_TYPE_EXPONENTIAL = "exponential";
     private static final String LOAD_TYPE_POISSON = "poisson";
     private static final String LOAD_TYPE_BURST = "burst";
     private static String loadType = LOAD_TYPE_POISSON;
 
     // for poisson load
-    private static double poisson_mean = 1900;
+    private static double poisson_mean = 1400;
     // private static String POISSON_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     //private static String POISSON_SAMPLE_FILE = "poisson_sample_.8_1000.csv";
-    private static String POISSON_SAMPLE_FILE = "poisson_sample_1.9_1000.csv";
+    private static String POISSON_SAMPLE_FILE = "poisson_sample_1.4_10000.csv";
 
     // for burst load
     private static double burst_high_mean = 600;
