@@ -39,20 +39,28 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "global_power"};
     private static final double DEFAULT_FREQUENCY = 1.8;
     private static final int MINIMUM_QUEUE_LENGTH = 3;
-    public static boolean VANILLA_MODE = false;
-    private static double GLOBAL_POWER_BUDGET = 9.48 * 3;
-    private static int SCHEDULER_PORT = 8888;
+    //public static boolean VANILLA_MODE = false;
+    public static boolean VANILLA_MODE;
+    //private static double GLOBAL_POWER_BUDGET = 9.48 * 3;
+    private static double GLOBAL_POWER_BUDGET;
+    //private static int SCHEDULER_PORT = 8888;
+    private static int SCHEDULER_PORT;
     // the interval to adjust power budget (per queries)
-    private static int ADJUST_BUDGET_INTERVAL = 50;
+    //private static int ADJUST_BUDGET_INTERVAL = 50;
+    private static int ADJUST_BUDGET_INTERVAL;
     // the interval to withdraw the idle service instances (per queries)
-    private static int WITHDRAW_BUDGET_INTERVAL = ADJUST_BUDGET_INTERVAL * 3;
+    //private static int WITHDRAW_BUDGET_INTERVAL = ADJUST_BUDGET_INTERVAL * 3;
+    private static int WITHDRAW_BUDGET_INTERVAL;
     // the number of queries to warm up the services
-    private static int WARMUP_COUNT = 20;
+    //private static int WARMUP_COUNT = 20;
+    private static int WARMUP_COUNT;
     private static AtomicInteger warmupCount = new AtomicInteger(0);
     // latency threshold between instances before stopping power adjustment
-    private static double ADJUST_THRESHOLD = 1000;
+    //private static double ADJUST_THRESHOLD = 1000;
+    private static double ADJUST_THRESHOLD;
     // the tail latency target
-    private static double LATENCY_PERCENTILE = 99;
+    //private static double LATENCY_PERCENTILE = 99;
+    private static double LATENCY_PERCENTILE;
     private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static Map<String, Double> frequencyStat = new HashMap<String, Double>();
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
@@ -65,16 +73,19 @@ public class CommandCenter implements SchedulerService.Iface {
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
-    private static String BOOSTING_DECISION = BoostDecision.ADAPTIVE_BOOST;
+    //private static String BOOSTING_DECISION = BoostDecision.ADAPTIVE_BOOST;
+    private static String BOOSTING_DECISION;
     private static long initialAdjustTimestamp;
-    private static boolean WITHDRAW_SERVICE_INSTANCE = true;
+    //private static boolean WITHDRAW_SERVICE_INSTANCE = true;
+    private static boolean WITHDRAW_SERVICE_INSTANCE;
     private static int ADAPTIVE_ADJUST_ROUND = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
     // pegasus
     private static List<Long> end2endQueryLatency = new LinkedList<Long>();
-    private static double qosTarget = 21.0;
+    //private static double qosTarget = 21.0;
+    private static double qosTarget;
     private static final double MAX_PACKAGE_POWER = 28.44 / 0.125;
     private static double currentPackagePower = 13.56 / 0.125;
     private static int waitRound = 0;

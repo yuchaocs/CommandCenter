@@ -26,30 +26,43 @@ public class StressClient {
     // common definition
     public static final String AUDIO_PATH = "/home/hailong/mulage-project/asr-mulage/input";
     private static final Logger LOG = Logger.getLogger(StressClient.class);
-    private static String SCHEDULER_IP = "localhost";
-    private static int SCHEDULER_PORT = 8888;
-    private static int WARMUP_COUNT = 20;
-    private static int num_client = 10000;
+    //private static String SCHEDULER_IP = "localhost";
+    private static String SCHEDULER_IP;
+    //private static int SCHEDULER_PORT = 8888;
+    private static int SCHEDULER_PORT;
+    //private static int WARMUP_COUNT = 20;
+    private static int WARMUP_COUNT;
+    //private static int num_client = 10000;
+    private static int num_client;
     private static final String LOAD_TYPE_EXPONENTIAL = "exponential";
     private static final String LOAD_TYPE_POISSON = "poisson";
     private static final String LOAD_TYPE_BURST = "burst";
-    private static String loadType = LOAD_TYPE_POISSON;
-
+    //private static String loadType = LOAD_TYPE_POISSON;
+    private static String loadType;
     // for poisson load
-    private static double poisson_mean = 1400;
+    //private static double poisson_mean = 1400;
+    private static double poisson_mean;
     // private static String POISSON_SAMPLE_FILE = "poisson_sample_.6_1000.csv";
     //private static String POISSON_SAMPLE_FILE = "poisson_sample_.8_1000.csv";
-    private static String POISSON_SAMPLE_FILE = "poisson_sample_1.4_10000.csv";
+    //private static String POISSON_SAMPLE_FILE = "poisson_sample_1.4_10000.csv";
+    private static String POISSON_SAMPLE_FILE;
 
     // for burst load
-    private static double burst_high_mean = 600;
-    private static double burst_low_mean = 1000;
-    private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.9_1000.csv";
-    private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1.4_1000.csv";
-    private static int BURST_SWITCH_NUM = 200;
-    private static float BURST_RATIO = 0.5f;
+    //private static double burst_high_mean = 600;
+    private static double burst_high_mean;
+    //private static double burst_low_mean = 1000;
+    private static double burst_low_mean;
+    //private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.9_1000.csv";
+    private static String BURST_HIGH_SAMPLE_FILE;
+    //private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1.4_1000.csv";
+    private static String BURST_LOW_SAMPLE_FILE;
+    //private static int BURST_SWITCH_NUM = 200;
+    private static int BURST_SWITCH_NUM;
+    //private static float BURST_RATIO = 0.5f;
+    private static float BURST_RATIO;
     //private static String OPERATION = "load";
-    private static String OPERATION = "sample";
+    //private static String OPERATION = "sample";
+    private static String OPERATION;
 
     public StressClient() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
