@@ -9,10 +9,7 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.thrift.TException;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.text.DecimalFormat;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
@@ -39,6 +36,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final String[] LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
     private static final String[] FREQUENCY_FILE_HEADER = {"adjust_id", "service_instance", "timestamp", "frequency"};
     private static final String[] EXPECTED_DELAY_FILE_HEADER = {"time", "service_instance", "expected_delay"};
+    private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "global_power"};
     private static final double DEFAULT_FREQUENCY = 1.8;
     private static final int MINIMUM_QUEUE_LENGTH = 3;
     public static boolean VANILLA_MODE = false;
@@ -61,6 +59,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static CSVWriter latencyWriter = null;
     private static CSVWriter frequencyWriter = null;
     private static CSVWriter expectedDelayWriter = null;
+    private static CSVWriter pegasusPowerWriter = null;
     private static CSVReader speedupReader = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
@@ -73,6 +72,13 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
+    // pegasus
+    private static List<Long> end2endQueryLatency = new LinkedList<Long>();
+    private static double qosTarget = 21.0;
+    private static final double MAX_PACKAGE_POWER = 28.44;
+    private static double currentPackagePower = 13.56;
+    private static int waitRound = 0;
+
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
@@ -83,7 +89,7 @@ public class CommandCenter implements SchedulerService.Iface {
      */
     public static void main(String[] args) throws IOException {
         CommandCenter commandCenter = new CommandCenter();
-        if (args.length == 10) {
+        if (args.length == 11) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
             ADJUST_BUDGET_INTERVAL = Integer.valueOf(args[1]);
             WITHDRAW_BUDGET_INTERVAL = Integer.valueOf(args[2]);
@@ -102,6 +108,7 @@ public class CommandCenter implements SchedulerService.Iface {
             } else if (args[9].equalsIgnoreCase("no-withdraw")) {
                 WITHDRAW_SERVICE_INSTANCE = false;
             }
+            qosTarget = Double.valueOf(args[10]);
             LOG.info("launching the command center with " + args[7] + " mode");
             LOG.info("global power budget: " + GLOBAL_POWER_BUDGET + ", adjust interval: " + ADJUST_BUDGET_INTERVAL + ", adjust threshold: " + ADJUST_THRESHOLD + ", latency percentile: " + LATENCY_PERCENTILE);
             LOG.info("boosting policy: " + BOOSTING_DECISION + ", withdraw mode: " + args[9] + ", withdraw interval " + WITHDRAW_BUDGET_INTERVAL);
@@ -137,12 +144,15 @@ public class CommandCenter implements SchedulerService.Iface {
             latencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             frequencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "frequency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             expectedDelayWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "expected_delay.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            pegasusPowerWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "pegasus_power.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             latencyWriter.writeNext(LATENCY_FILE_HEADER);
             latencyWriter.flush();
             frequencyWriter.writeNext(FREQUENCY_FILE_HEADER);
             frequencyWriter.flush();
             expectedDelayWriter.writeNext(EXPECTED_DELAY_FILE_HEADER);
             expectedDelayWriter.flush();
+            pegasusPowerWriter.writeNext(PEGASUS_POWER_FILE_HEADER);
+            pegasusPowerWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -389,6 +399,7 @@ public class CommandCenter implements SchedulerService.Iface {
             while (true) {
                 try {
                     QuerySpec query = finishedQueryQueue.take();
+                    long totalLatency = 0;
                     for (int i = 0; i < query.getTimestamp().size(); i++) {
                         LatencySpec latencySpec = query.getTimestamp().get(i);
                         long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
@@ -405,43 +416,49 @@ public class CommandCenter implements SchedulerService.Iface {
                                 instance.setQueriesBetweenWithdraw(instance.getQueriesBetweenWithdraw() + 1);
                             }
                         }
+                        totalLatency += queuing_time + serving_time;
                     }
+                    end2endQueryLatency.add(totalLatency);
                     removed_queries += 1;
-                    //LOG.info(removed_queries + " query latency statistics are returned to command center");
-                    if (removed_queries % ADJUST_BUDGET_INTERVAL == 0) {
-                        long currentTimestamp = System.currentTimeMillis();
-                        for (Map.Entry<String, Double> entry : frequencyStat.entrySet()) {
-                            ArrayList<String> csvEntry = new ArrayList<String>();
-                            csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
-                            csvEntry.add(entry.getKey());
-                            csvEntry.add("" + (currentTimestamp - initialAdjustTimestamp));
-                            csvEntry.add("" + entry.getValue());
-                            frequencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                            try {
-                                frequencyWriter.flush();
-                            } catch (IOException e) {
-                                e.printStackTrace();
+                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST)) {
+                        performPegasus(removed_queries);
+                    } else {
+                        //LOG.info(removed_queries + " query latency statistics are returned to command center");
+                        if (removed_queries % ADJUST_BUDGET_INTERVAL == 0) {
+                            long currentTimestamp = System.currentTimeMillis();
+                            for (Map.Entry<String, Double> entry : frequencyStat.entrySet()) {
+                                ArrayList<String> csvEntry = new ArrayList<String>();
+                                csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
+                                csvEntry.add(entry.getKey());
+                                csvEntry.add("" + (currentTimestamp - initialAdjustTimestamp));
+                                csvEntry.add("" + entry.getValue());
+                                frequencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                                try {
+                                    frequencyWriter.flush();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
                             }
-                        }
-                        frequencyStat.clear();
-                        initialAdjustTimestamp = currentTimestamp;
-                        if (WITHDRAW_SERVICE_INSTANCE) {
-                            if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
-                                withdrawServiceInstance();
-                                for (Map.Entry<String, List<ServiceInstance>> serviceEntry : serviceMap.entrySet()) {
-                                    for (ServiceInstance instance : serviceEntry.getValue()) {
-                                        instance.setQueriesBetweenWithdraw(0);
-                                        instance.setRenewTimestamp(initialAdjustTimestamp);
+                            frequencyStat.clear();
+                            initialAdjustTimestamp = currentTimestamp;
+                            if (WITHDRAW_SERVICE_INSTANCE) {
+                                if (removed_queries % WITHDRAW_BUDGET_INTERVAL == 0) {
+                                    withdrawServiceInstance();
+                                    for (Map.Entry<String, List<ServiceInstance>> serviceEntry : serviceMap.entrySet()) {
+                                        for (ServiceInstance instance : serviceEntry.getValue()) {
+                                            instance.setQueriesBetweenWithdraw(0);
+                                            instance.setRenewTimestamp(initialAdjustTimestamp);
+                                        }
                                     }
                                 }
                             }
-                        }
-                        adjustPowerBudget();
-                        for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
-                            for (ServiceInstance instance : entry.getValue()) {
-                                String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
+                            adjustPowerBudget();
+                            for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
+                                for (ServiceInstance instance : entry.getValue()) {
+                                    String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
 
-                                frequencyStat.put(instanceId, instance.getCurrentFrequncy());
+                                    frequencyStat.put(instanceId, instance.getCurrentFrequncy());
+                                }
                             }
                         }
                     }
@@ -530,6 +547,61 @@ public class CommandCenter implements SchedulerService.Iface {
                 LOG.info("no service instance can be recycled, wait for the next recycle interval");
             }
             LOG.info("==================================================");
+        }
+
+        /**
+         * This method re-implements the pegasus paper control logic
+         */
+        private void performPegasus(long finishedQueryNum) {
+            if (waitRound == 0) {
+                long instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
+                long avgLatency = 0;
+                if (finishedQueryNum >= ADJUST_BUDGET_INTERVAL) {
+                    int start_index = end2endQueryLatency.size() - ADJUST_BUDGET_INTERVAL;
+                    long totalLatency = 0;
+                    for (int i = start_index; i < end2endQueryLatency.size(); i++) {
+                        totalLatency += end2endQueryLatency.get(i);
+                    }
+                    avgLatency = totalLatency / ADJUST_BUDGET_INTERVAL;
+                }
+                double powerTarget = 0;
+                if (avgLatency > qosTarget) {
+                    // max power, wait 10 round
+                    powerTarget = MAX_PACKAGE_POWER;
+                    waitRound = 10;
+                } else if (instantaneousLatency > 1.35 * qosTarget) {
+                    // max power
+                    powerTarget = MAX_PACKAGE_POWER;
+                } else if (instantaneousLatency > qosTarget) {
+                    // increase power by 7%
+                    powerTarget = currentPackagePower * 1.07;
+                } else if (0.85 * qosTarget <= instantaneousLatency && instantaneousLatency <= qosTarget) {
+                    // keep current power
+                    powerTarget = currentPackagePower;
+                } else if (instantaneousLatency < 0.85 * qosTarget) {
+                    // lower power by 1%
+                    powerTarget = currentPackagePower * 0.99;
+                } else if (instantaneousLatency < 0.6 * qosTarget) {
+                    // lower power by 3%
+                    powerTarget = currentPackagePower * 0.97;
+                }
+                currentPackagePower = powerTarget;
+                // enforce the power target
+                String command = "./writeRAPL " + powerTarget;
+                LOG.info("change the pp0 power to " + powerTarget + "watts");
+                execSystemCommand(command);
+                ArrayList<String> csvEntry = new ArrayList<String>();
+                csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
+                csvEntry.add("" + powerTarget);
+                pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                try {
+                    pegasusPowerWriter.flush();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                waitRound--;
+            }
         }
 
         /**
@@ -821,6 +893,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
             } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
                 decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                decision.setFrequency(instance.getCurrentFrequncy());
                 decision.setRequiredPower(requiredPowerInstance);
                 LOG.info("service boosting decision: (always instance boosting)");
             }
@@ -964,6 +1037,27 @@ public class CommandCenter implements SchedulerService.Iface {
             } else {
                 LOG.info("The node manager has run out of service instance " + serviceType);
             }
+        }
+
+        private String execSystemCommand(String command) {
+            String result = null;
+            try {
+                Process p = Runtime.getRuntime().exec(command);
+                BufferedReader stdInput = new BufferedReader(new
+                        InputStreamReader(p.getInputStream()));
+
+                BufferedReader stdError = new BufferedReader(new
+                        InputStreamReader(p.getErrorStream()));
+                while ((result = stdInput.readLine()) != null) {
+                    LOG.info(result);
+                }
+                while ((result = stdError.readLine()) != null) {
+                    LOG.error(result);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return result;
         }
 
         /**

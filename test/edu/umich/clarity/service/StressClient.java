@@ -47,6 +47,7 @@ public class StressClient {
     private static String BURST_HIGH_SAMPLE_FILE = "poisson_sample_.9_1000.csv";
     private static String BURST_LOW_SAMPLE_FILE = "poisson_sample_1.4_1000.csv";
     private static int BURST_SWITCH_NUM = 200;
+    private static float BURST_RATIO = 0.5f;
     //private static String OPERATION = "load";
     private static String OPERATION = "sample";
 
@@ -58,7 +59,7 @@ public class StressClient {
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
     public static void main(String[] args) {
-        if (args.length == 10) {
+        if (args.length == 11) {
             SCHEDULER_IP = args[0];
             SCHEDULER_PORT = Integer.valueOf(args[1]);
             POISSON_SAMPLE_FILE = args[2];
@@ -69,6 +70,7 @@ public class StressClient {
             BURST_HIGH_SAMPLE_FILE = args[7];
             BURST_LOW_SAMPLE_FILE = args[8];
             BURST_SWITCH_NUM = Integer.valueOf(args[9]);
+            BURST_RATIO = Float.valueOf(args[10]);
         }
         StressClient client = new StressClient();
         if (OPERATION.equalsIgnoreCase("load")) {
@@ -145,18 +147,27 @@ public class StressClient {
                 query.setTimestamp(timestamp);
                 serviceClient.submitQuery(query);
                 clientDelegate.close();
-                if (i % BURST_SWITCH_NUM == 0) {
-                    sendingHighSample = !sendingHighSample;
-                }
-                if (sendingHighSample) {
+                if ((i % BURST_SWITCH_NUM) < Math.round(BURST_SWITCH_NUM * BURST_RATIO)) {
                     LOG.info("Sending high load query " + i + " and sleep for " + Integer.valueOf(highSample[highSampleCounter]) + " ms");
                     Thread.sleep(Integer.valueOf(highSample[highSampleCounter]));
                     highSampleCounter++;
                 } else {
-                    LOG.info("Sending low load query " + i+ " and sleep for " + Integer.valueOf(lowSample[lowSampleCounter]) + " ms");
+                    LOG.info("Sending low load query " + i + " and sleep for " + Integer.valueOf(lowSample[lowSampleCounter]) + " ms");
                     Thread.sleep(Integer.valueOf(lowSample[lowSampleCounter]));
                     lowSampleCounter++;
                 }
+//                if (i % BURST_SWITCH_NUM == 0) {
+//                    sendingHighSample = !sendingHighSample;
+//                }
+//                if (sendingHighSample) {
+//                    LOG.info("Sending high load query " + i + " and sleep for " + Integer.valueOf(highSample[highSampleCounter]) + " ms");
+//                    Thread.sleep(Integer.valueOf(highSample[highSampleCounter]));
+//                    highSampleCounter++;
+//                } else {
+//                    LOG.info("Sending low load query " + i + " and sleep for " + Integer.valueOf(lowSample[lowSampleCounter]) + " ms");
+//                    Thread.sleep(Integer.valueOf(lowSample[lowSampleCounter]));
+//                    lowSampleCounter++;
+//                }
             } catch (TException e) {
                 e.printStackTrace();
             } catch (InterruptedException e) {
