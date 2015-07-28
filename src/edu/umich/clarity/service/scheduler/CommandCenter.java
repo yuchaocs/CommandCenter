@@ -1028,14 +1028,16 @@ public class CommandCenter implements SchedulerService.Iface {
                 candidateInstance.setCurrentFrequncy(instance.getCurrentFrequncy());
                 candidateInstance.setLoadProb(loadProb);
                 instanceList.remove(0);
-                int stealedQueries = 0;
                 candidateInstance.setRenewTimestamp(System.currentTimeMillis());
                 serviceMap.get(serviceType).add(candidateInstance);
+                int stealedQueries = 0;
                 try {
                     TClient clientDelegate = new TClient();
                     IPAService.Client client = clientDelegate.createIPAClient(candidateInstance.getHostPort().getIp(), candidateInstance.getHostPort().getPort());
                     client.updatBudget(candidateInstance.getCurrentFrequncy());
-                    stealedQueries = client.stealParentInstance(instance.getHostPort());
+                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
+                        stealedQueries = client.stealParentInstance(instance.getHostPort());
+                    }
                     clientDelegate.close();
                 } catch (IOException ex) {
                     ex.printStackTrace();
@@ -1043,7 +1045,9 @@ public class CommandCenter implements SchedulerService.Iface {
                     ex.printStackTrace();
                 }
                 LOG.info("launching new service instance " + serviceType + " on " + candidateInstance.getHostPort().getIp() + ":" + candidateInstance.getHostPort().getPort() + " with frequency " + candidateInstance.getCurrentFrequncy() + "GHz");
-                LOG.info("stealed " + stealedQueries + " queries from parent service " + serviceType + " running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
+                if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
+                    LOG.info("stealed " + stealedQueries + " queries from parent service " + serviceType + " running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
+                }
                 LOG.info("updating the load probability of the parent service instance to " + loadProb);
             } else {
                 LOG.info("The node manager has run out of service instance " + serviceType);
