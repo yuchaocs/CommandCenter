@@ -135,7 +135,8 @@ public class StressClient {
                     BURST_LOW_SAMPLE_FILE), ',');
             lowSampleEntries = reader.readAll();
             reader.close();
-
+            LOG.info("using the high sample file: " + BURST_HIGH_SAMPLE_FILE);
+            LOG.info("using the low sample file: " + BURST_LOW_SAMPLE_FILE);
         } catch (IOException ex) {
 
         }
