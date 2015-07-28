@@ -66,6 +66,9 @@ public class StressClient {
 
     public StressClient() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
+        LOG.info("the operation mode is " + OPERATION);
+        LOG.info("the load type is " + loadType + " with warm up count " + WARMUP_COUNT);
+        LOG.info("the number of queries will be generated is " + num_client);
     }
 
     /**
