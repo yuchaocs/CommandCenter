@@ -22,6 +22,7 @@ public class ServiceInstance {
     private double servingTimeAvg;
     private double queuingTimeAvg;
     private int queriesBetweenWithdraw;
+    private int queriesBetweenAdjust;
     private long renewTimestamp;
 
     public ServiceInstance() {
@@ -29,6 +30,7 @@ public class ServiceInstance {
         this.serving_latency = new LinkedList<Double>();
         this.loadProb = 1;
         this.queriesBetweenWithdraw = 0;
+        this.queriesBetweenAdjust = 0;
     }
 
     public List<Double> getQueuing_latency() {
@@ -141,5 +143,13 @@ public class ServiceInstance {
 
     public void setRenewTimestamp(long renewTimestamp) {
         this.renewTimestamp = renewTimestamp;
+    }
+
+    public int getQueriesBetweenAdjust() {
+        return queriesBetweenAdjust;
+    }
+
+    public void setQueriesBetweenAdjust(int queriesBetweenAdjust) {
+        this.queriesBetweenAdjust = queriesBetweenAdjust;
     }
 }

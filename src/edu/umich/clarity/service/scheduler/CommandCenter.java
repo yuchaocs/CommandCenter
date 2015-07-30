@@ -33,7 +33,8 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final long LATENCY_BUDGET = 100;
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
-    private static final String[] LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance", "total_queuing", "total_serving"};
+    private static final String[] TOTAL_LATENCY_FILE_HEADER = {"query_id", "total_queuing", "total_serving"};
+    private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance"};
     private static final String[] FREQUENCY_FILE_HEADER = {"adjust_id", "service_instance", "timestamp", "frequency"};
     private static final String[] EXPECTED_DELAY_FILE_HEADER = {"time", "service_instance", "expected_delay"};
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "global_power"};
@@ -65,6 +66,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static Map<String, Double> frequencyStat = new HashMap<String, Double>();
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
     private static CSVWriter latencyWriter = null;
+    private static CSVWriter serviceLatencyWriter = null;
     private static CSVWriter frequencyWriter = null;
     private static CSVWriter expectedDelayWriter = null;
     private static CSVWriter pegasusPowerWriter = null;
@@ -153,10 +155,11 @@ public class CommandCenter implements SchedulerService.Iface {
         try {
             speedupReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "freq.csv"), ',', '\n', 1);
             latencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            serviceLatencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "service_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             frequencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "frequency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             expectedDelayWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "expected_delay.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             pegasusPowerWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "pegasus_power.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            latencyWriter.writeNext(LATENCY_FILE_HEADER);
+            latencyWriter.writeNext(TOTAL_LATENCY_FILE_HEADER);
             latencyWriter.flush();
             frequencyWriter.writeNext(FREQUENCY_FILE_HEADER);
             frequencyWriter.flush();
@@ -164,6 +167,8 @@ public class CommandCenter implements SchedulerService.Iface {
             expectedDelayWriter.flush();
             pegasusPowerWriter.writeNext(PEGASUS_POWER_FILE_HEADER);
             pegasusPowerWriter.flush();
+            serviceLatencyWriter.writeNext(SERVICE_LATENCY_FILE_HEADER);
+            serviceLatencyWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -337,18 +342,20 @@ public class CommandCenter implements SchedulerService.Iface {
                  * the query get served, the third one is when the serving iss done.
                  */
                 ArrayList<String> csvEntry = new ArrayList<String>();
+                ArrayList<String> serviceCSVEntry = new ArrayList<String>();
                 long total_queuing = 0;
                 long total_serving = 0;
                 csvEntry.add(query.getName());
+                serviceCSVEntry.add(query.getName());
                 for (int i = 0; i < query.getTimestamp().size(); i++) {
                     LatencySpec latencySpec = query.getTimestamp().get(i);
                     long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
                     total_queuing += queuing_time;
                     long serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
                     total_serving += serving_time;
-                    csvEntry.add("" + queuing_time);
-                    csvEntry.add("" + serving_time);
-                    csvEntry.add("" + latencySpec.getInstance_id());
+                    serviceCSVEntry.add("" + queuing_time);
+                    serviceCSVEntry.add("" + serving_time);
+                    serviceCSVEntry.add("" + latencySpec.getInstance_id());
 //                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
 //                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
                 }
@@ -358,6 +365,8 @@ public class CommandCenter implements SchedulerService.Iface {
 //                        + (total_queuing + total_serving) + "ms");
                 csvEntry.add("" + total_queuing);
                 csvEntry.add("" + total_serving);
+                serviceLatencyWriter.writeNext(serviceCSVEntry.toArray(new String[serviceCSVEntry.size()]));
+                serviceLatencyWriter.flush();
                 latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 latencyWriter.flush();
             }
@@ -425,6 +434,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                 instance.getServing_latency().add(new Double(serving_time));
                                 instance.getQueuing_latency().add(new Double(queuing_time));
                                 instance.setQueriesBetweenWithdraw(instance.getQueriesBetweenWithdraw() + 1);
+                                instance.setQueriesBetweenAdjust(instance.getQueriesBetweenAdjust() + 1);
                             }
                         }
                         totalLatency += queuing_time + serving_time;
@@ -464,6 +474,11 @@ public class CommandCenter implements SchedulerService.Iface {
                                 }
                             }
                             adjustPowerBudget();
+                            for (Map.Entry<String, List<ServiceInstance>> serviceEntry : serviceMap.entrySet()) {
+                                for (ServiceInstance instance : serviceEntry.getValue()) {
+                                    instance.setQueriesBetweenAdjust(0);
+                                }
+                            }
                             for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                                 for (ServiceInstance instance : entry.getValue()) {
                                     String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
@@ -632,10 +647,9 @@ public class CommandCenter implements SchedulerService.Iface {
                 for (ServiceInstance instance : serviceMap.get(serviceType)) {
                     double estimatedLatency = 0;
                     if (instance.getQueuing_latency().size() != 0) {
-                        Double statNum = ADJUST_BUDGET_INTERVAL * instance.getLoadProb();
-                        int start_index = instance.getServing_latency().size() - statNum.intValue() - 1;
+                        int start_index = instance.getServing_latency().size() - instance.getQueriesBetweenAdjust();
                         //LOG.info("start index of the query list " + start_index);
-                        start_index = start_index > -1 ? start_index : 0;
+                        //start_index = start_index > -1 ? start_index : 0;
                         List<Double> servingLatencyStatistic = instance.getServing_latency().subList(start_index, instance.getServing_latency().size());
                         List<Double> queuingLatencyStatistic = instance.getQueuing_latency().subList(start_index, instance.getServing_latency().size());
                         double servingPercentileValue = 0;
@@ -839,9 +853,10 @@ public class CommandCenter implements SchedulerService.Iface {
                 // iterate through the service instance list to predict the tail latency
                 for (ServiceInstance historyInstance : serviceMap.get(instance.getServiceType())) {
                     if (historyInstance.getQueuing_latency().size() != 0) {
-                        Double statNum = ADJUST_BUDGET_INTERVAL * historyInstance.getLoadProb();
-                        int start_index = historyInstance.getQueuing_latency().size() - statNum.intValue() - 1;
-                        start_index = start_index > -1 ? start_index : 0;
+                        //Double statNum = ADJUST_BUDGET_INTERVAL * historyInstance.getLoadProb();
+                        //int start_index = historyInstance.getQueuing_latency().size() - statNum.intValue() - 1;
+                        int start_index = historyInstance.getQueuing_latency().size() - historyInstance.getQueriesBetweenAdjust();
+                        //start_index = start_index > -1 ? start_index : 0;
                         List<Double> servingLatencyStatistic = historyInstance.getServing_latency().subList(start_index, historyInstance.getServing_latency().size());
                         List<Double> queuingLatencyStatistic = historyInstance.getQueuing_latency().subList(start_index, historyInstance.getQueuing_latency().size());
                         int statLength = queuingLatencyStatistic.size();
