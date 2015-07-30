@@ -734,7 +734,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info(instanceRanking);
             LOG.info(freqList);
             LOG.info(loadProb);
-            LOG.info("global power budget is " + GLOBAL_POWER_BUDGET);
+            LOG.info("global available power budget is " + POWER_BUDGET.get().doubleValue());
             double slowestQueuingTimeAvg = serviceInstanceList.get(0).getQueuingTimeAvg();
             double slowestServingTimeAvg = serviceInstanceList.get(0).getServingTimeAvg();
             double fastestQueuingTimeAvg = serviceInstanceList.get(serviceInstanceList.size() - 1).getQueuingTimeAvg();
