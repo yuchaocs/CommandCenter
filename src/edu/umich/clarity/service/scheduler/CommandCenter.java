@@ -557,6 +557,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         instance.getQueuing_latency().clear();
                         instance.getServing_latency().clear();
                         instance.setQueriesBetweenWithdraw(0);
+                        instance.setQueriesBetweenAdjust(0);
                         candidateMap.get(serviceType).add(instance);
                         LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " and the power budget recycled is " + PowerModel.getPowerPerFreq(allocatedFreq));
                         LOG.info("the current global power budget is " + POWER_BUDGET.get().doubleValue());
@@ -733,6 +734,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info(instanceRanking);
             LOG.info(freqList);
             LOG.info(loadProb);
+            LOG.info("global power budget is " + GLOBAL_POWER_BUDGET);
             double slowestQueuingTimeAvg = serviceInstanceList.get(0).getQueuingTimeAvg();
             double slowestServingTimeAvg = serviceInstanceList.get(0).getServingTimeAvg();
             double fastestQueuingTimeAvg = serviceInstanceList.get(serviceInstanceList.size() - 1).getQueuingTimeAvg();
@@ -790,8 +792,8 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                         LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
                     } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
-                        slowestInstance.setCurrentFrequncy(decision.getFrequency());
-                        launchServiceInstance(slowestInstance);
+                        //slowestInstance.setCurrentFrequncy(decision.getFrequency());
+                        launchServiceInstance(slowestInstance, decision.getFrequency());
                     }
                 } else {
                     LOG.info("recycling failed, not enough power budget to perform the stage boosting");
@@ -1011,7 +1013,7 @@ public class CommandCenter implements SchedulerService.Iface {
          *
          * @param instance
          */
-        private void launchServiceInstance(ServiceInstance instance) {
+        private void launchServiceInstance(ServiceInstance instance, double decidedFreq) {
 //            ServiceInstance instance = new ServiceInstance();
 //            instance.setServiceType(serviceType);
 //            instance.setQueuingTimePercentile(queuingTimePercentile);
@@ -1040,7 +1042,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 List<ServiceInstance> instanceList = candidateMap.get(serviceType);
                 ServiceInstance candidateInstance = instanceList.get(0);
                 candidateInstance.setServiceType(serviceType);
-                candidateInstance.setCurrentFrequncy(instance.getCurrentFrequncy());
+                candidateInstance.setCurrentFrequncy(decidedFreq);
                 candidateInstance.setLoadProb(loadProb);
                 instanceList.remove(0);
                 candidateInstance.setRenewTimestamp(System.currentTimeMillis());
