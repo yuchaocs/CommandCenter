@@ -824,9 +824,9 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 if (instance.getCurrentQueueLength() < MINIMUM_QUEUE_LENGTH) {
                     double currentFreq = instance.getCurrentFrequncy();
-                    // int increaseByHalf = (freqRangeList.size() - freqRangeList.indexOf(currentFreq)) / 2;
-                    // double increasedFreq = freqRangeList.get(freqRangeList.indexOf(currentFreq) + increaseByHalf);
-                    double increasedFreq = freqRangeList.get(freqRangeList.indexOf(currentFreq) + 1);
+                    int increaseByHalf = (freqRangeList.size() - freqRangeList.indexOf(currentFreq)) / 2;
+                    double increasedFreq = freqRangeList.get(freqRangeList.indexOf(currentFreq) + increaseByHalf);
+                    // double increasedFreq = freqRangeList.get(freqRangeList.indexOf(currentFreq) + 1);
                     requiredPowerFreq = PowerModel.getPowerPerFreq(increasedFreq) - PowerModel.getPowerPerFreq(currentFreq);
                     decision.setDecision(BoostDecision.FREQUENCY_BOOST);
                     decision.setRequiredPower(requiredPowerFreq);
