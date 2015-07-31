@@ -89,8 +89,8 @@ public class CommandCenter implements SchedulerService.Iface {
     private static List<Long> end2endQueryLatency = new LinkedList<Long>();
     //private static double qosTarget = 21.0;
     private static double qosTarget;
-    private static final double MAX_PACKAGE_POWER = 32.5 / 0.125;
-    private static double currentPackagePower = 27 / 0.125;
+    private static final double MAX_PACKAGE_POWER = (13.56 + 40) / 0.125;
+    private static double currentPackagePower = (4.95 + 40) / 0.125;
     private static int waitRound = 0;
 
     public CommandCenter() {
@@ -370,6 +370,9 @@ public class CommandCenter implements SchedulerService.Iface {
                 serviceLatencyWriter.flush();
                 latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 latencyWriter.flush();
+                if (warmupCount.get() % 1000 == 0) {
+                    LOG.info("stop processing queries at " + System.currentTimeMillis());
+                }
             }
             if (warmupCount.get() == WARMUP_COUNT) {
                 initialAdjustTimestamp = System.currentTimeMillis();
@@ -491,10 +494,6 @@ public class CommandCenter implements SchedulerService.Iface {
                             }
                         }
                     }
-                    if (removed_queries % 1000 == 0) {
-                        LOG.info("stop processing queries at " + System.currentTimeMillis());
-                    }
-
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
