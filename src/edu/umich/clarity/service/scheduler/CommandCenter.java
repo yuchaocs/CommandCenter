@@ -78,6 +78,7 @@ public class CommandCenter implements SchedulerService.Iface {
     //private static String BOOSTING_DECISION = BoostDecision.ADAPTIVE_BOOST;
     private static String BOOSTING_DECISION;
     private static long initialAdjustTimestamp;
+    private static long initialPegasusTimestamp;
     //private static boolean WITHDRAW_SERVICE_INSTANCE = true;
     private static boolean WITHDRAW_SERVICE_INSTANCE;
     private static int ADAPTIVE_ADJUST_ROUND = 0;
@@ -372,6 +373,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             if (warmupCount.get() == WARMUP_COUNT) {
                 initialAdjustTimestamp = System.currentTimeMillis();
+                initialPegasusTimestamp = initialAdjustTimestamp;
                 LOG.info("starting to processing the queries at " + initialAdjustTimestamp);
                 for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                     for (ServiceInstance instance : entry.getValue()) {
@@ -585,13 +587,8 @@ public class CommandCenter implements SchedulerService.Iface {
          * This method re-implements the pegasus paper control logic
          */
         private void performPegasus(long finishedQueryNum) {
-            long instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
-            ArrayList<String> csvEntry = new ArrayList<String>();
-            csvEntry.add("" + finishedQueryNum);
-            csvEntry.add("" + instantaneousLatency);
-            csvEntry.add("" + (currentPackagePower * 0.125));
-            pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
             if (waitRound == 0) {
+                long instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
                 long avgLatency = 0;
                 if (finishedQueryNum >= ADJUST_BUDGET_INTERVAL) {
                     int start_index = end2endQueryLatency.size() - ADJUST_BUDGET_INTERVAL;
@@ -637,6 +634,13 @@ public class CommandCenter implements SchedulerService.Iface {
             } else {
                 waitRound--;
             }
+            long currentTime = System.currentTimeMillis();
+            ArrayList<String> csvEntry = new ArrayList<String>();
+            csvEntry.add("" + finishedQueryNum);
+            csvEntry.add("" + (currentTime - initialPegasusTimestamp));
+            csvEntry.add("" + (currentPackagePower * 0.125));
+            pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            initialPegasusTimestamp = currentTime;
             LOG.info("change the pp0 power to " + currentPackagePower + "watts");
         }
 
