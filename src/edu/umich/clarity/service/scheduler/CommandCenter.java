@@ -88,8 +88,8 @@ public class CommandCenter implements SchedulerService.Iface {
     private static List<Long> end2endQueryLatency = new LinkedList<Long>();
     //private static double qosTarget = 21.0;
     private static double qosTarget;
-    private static final double MAX_PACKAGE_POWER = 28.44 / 0.125;
-    private static double currentPackagePower = 13.56 / 0.125;
+    private static final double MAX_PACKAGE_POWER = 32.5 / 0.125;
+    private static double currentPackagePower = 27 / 0.125;
     private static int waitRound = 0;
 
     public CommandCenter() {
