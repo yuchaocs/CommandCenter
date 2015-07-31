@@ -372,6 +372,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             if (warmupCount.get() == WARMUP_COUNT) {
                 initialAdjustTimestamp = System.currentTimeMillis();
+                LOG.info("starting to processing the queries at " + initialAdjustTimestamp);
                 for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                     for (ServiceInstance instance : entry.getValue()) {
                         String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
@@ -488,6 +489,10 @@ public class CommandCenter implements SchedulerService.Iface {
                             }
                         }
                     }
+                    if (removed_queries % 1000 == 0) {
+                        LOG.info("stop processing queries at " + System.currentTimeMillis());
+                    }
+
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -618,7 +623,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 LOG.info("change the pp0 power to " + powerTarget + "watts");
                 execSystemCommand(command);
                 ArrayList<String> csvEntry = new ArrayList<String>();
-                csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
+                csvEntry.add("" + finishedQueryNum);
                 csvEntry.add("" + powerTarget);
                 pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 try {
