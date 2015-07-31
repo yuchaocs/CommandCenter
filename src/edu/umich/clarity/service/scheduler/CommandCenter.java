@@ -585,8 +585,13 @@ public class CommandCenter implements SchedulerService.Iface {
          * This method re-implements the pegasus paper control logic
          */
         private void performPegasus(long finishedQueryNum) {
+            long instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
+            ArrayList<String> csvEntry = new ArrayList<String>();
+            csvEntry.add("" + finishedQueryNum);
+            csvEntry.add("" + instantaneousLatency);
+            csvEntry.add("" + (currentPackagePower * 0.125));
+            pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
             if (waitRound == 0) {
-                long instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
                 long avgLatency = 0;
                 if (finishedQueryNum >= ADJUST_BUDGET_INTERVAL) {
                     int start_index = end2endQueryLatency.size() - ADJUST_BUDGET_INTERVAL;
@@ -607,6 +612,9 @@ public class CommandCenter implements SchedulerService.Iface {
                 } else if (instantaneousLatency > qosTarget) {
                     // increase power by 7%
                     powerTarget = currentPackagePower * 1.07;
+                    if (powerTarget > MAX_PACKAGE_POWER) {
+                        powerTarget = MAX_PACKAGE_POWER;
+                    }
                 } else if (0.85 * qosTarget <= instantaneousLatency && instantaneousLatency <= qosTarget) {
                     // keep current power
                     powerTarget = currentPackagePower;
@@ -620,12 +628,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 currentPackagePower = powerTarget;
                 // enforce the power target
                 String command = "sudo ./writeRAPL " + Math.round(powerTarget);
-                LOG.info("change the pp0 power to " + powerTarget + "watts");
                 execSystemCommand(command);
-                ArrayList<String> csvEntry = new ArrayList<String>();
-                csvEntry.add("" + finishedQueryNum);
-                csvEntry.add("" + powerTarget);
-                pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 try {
                     pegasusPowerWriter.flush();
                 } catch (IOException e) {
@@ -634,6 +637,7 @@ public class CommandCenter implements SchedulerService.Iface {
             } else {
                 waitRound--;
             }
+            LOG.info("change the pp0 power to " + currentPackagePower + "watts");
         }
 
         /**
