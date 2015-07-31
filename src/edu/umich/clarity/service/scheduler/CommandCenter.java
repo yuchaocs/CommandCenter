@@ -37,7 +37,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance"};
     private static final String[] FREQUENCY_FILE_HEADER = {"adjust_id", "service_instance", "timestamp", "frequency"};
     private static final String[] EXPECTED_DELAY_FILE_HEADER = {"time", "service_instance", "expected_delay"};
-    private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "global_power"};
+    private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "elapse_time", "package_power"};
     private static final double DEFAULT_FREQUENCY = 1.8;
     private static final int MINIMUM_QUEUE_LENGTH = 3;
     //public static boolean VANILLA_MODE = false;
