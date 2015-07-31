@@ -619,7 +619,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 currentPackagePower = powerTarget;
                 // enforce the power target
-                String command = "./writeRAPL " + Math.round(powerTarget);
+                String command = "sudo ./writeRAPL " + Math.round(powerTarget);
                 LOG.info("change the pp0 power to " + powerTarget + "watts");
                 execSystemCommand(command);
                 ArrayList<String> csvEntry = new ArrayList<String>();
