@@ -40,6 +40,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "elapse_time", "package_power"};
     private static final double DEFAULT_FREQUENCY = 1.8;
     private static final int MINIMUM_QUEUE_LENGTH = 3;
+    private static final double MAX_PACKAGE_POWER = (14 + 40) / 0.125;
     //public static boolean VANILLA_MODE = false;
     public static boolean VANILLA_MODE;
     //private static double GLOBAL_POWER_BUDGET = 9.48 * 3;
@@ -82,16 +83,14 @@ public class CommandCenter implements SchedulerService.Iface {
     //private static boolean WITHDRAW_SERVICE_INSTANCE = true;
     private static boolean WITHDRAW_SERVICE_INSTANCE;
     private static int ADAPTIVE_ADJUST_ROUND = 0;
-    // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
-    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
-
     // pegasus
     private static List<Long> end2endQueryLatency = new LinkedList<Long>();
     //private static double qosTarget = 21.0;
     private static double qosTarget;
-    private static final double MAX_PACKAGE_POWER = (14 + 40) / 0.125;
     private static double currentPackagePower = (5 + 40) / 0.125;
     private static int waitRound = 0;
+    // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
+    private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
@@ -621,15 +620,13 @@ public class CommandCenter implements SchedulerService.Iface {
                     // lower power by 3%
                     powerTarget = currentPackagePower * 0.97;
                 }
+                if (powerTarget < ((40 + 5) / 0.125)) {
+                    powerTarget = (40 + 5) / 0.125;
+                }
                 currentPackagePower = powerTarget;
                 // enforce the power target
                 String command = "sudo ./writeRAPL " + Math.round(powerTarget);
                 execSystemCommand(command);
-                try {
-                    pegasusPowerWriter.flush();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
             } else {
                 waitRound--;
             }
@@ -639,6 +636,11 @@ public class CommandCenter implements SchedulerService.Iface {
             csvEntry.add("" + (currentTime - initialPegasusTimestamp));
             csvEntry.add("" + (currentPackagePower * 0.125 - 40));
             pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            try {
+                pegasusPowerWriter.flush();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
             initialPegasusTimestamp = currentTime;
             LOG.info("change the pp0 power to " + currentPackagePower + "watts");
         }
