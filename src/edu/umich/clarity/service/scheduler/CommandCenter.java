@@ -637,7 +637,7 @@ public class CommandCenter implements SchedulerService.Iface {
             ArrayList<String> csvEntry = new ArrayList<String>();
             csvEntry.add("" + finishedQueryNum);
             csvEntry.add("" + (currentTime - initialPegasusTimestamp));
-            csvEntry.add("" + (currentPackagePower * 0.125));
+            csvEntry.add("" + (currentPackagePower * 0.125 - 40));
             pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
             initialPegasusTimestamp = currentTime;
             LOG.info("change the pp0 power to " + currentPackagePower + "watts");
