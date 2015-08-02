@@ -87,7 +87,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static List<Long> end2endQueryLatency = new LinkedList<Long>();
     //private static double qosTarget = 21.0;
     private static double qosTarget;
-    private static double currentPackagePower = (5 + 40) / 0.125;
+    private static double currentPackagePower = (14 + 40) / 0.125;
     private static int waitRound = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
