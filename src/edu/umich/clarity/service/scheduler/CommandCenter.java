@@ -850,8 +850,6 @@ public class CommandCenter implements SchedulerService.Iface {
                     decision.setDecision(BoostDecision.INSTANCE_BOOST);
                     decision.setFrequency(instance.getCurrentFrequncy());
                     decision.setRequiredPower(requiredPowerInstance);
-                    LOG.info("the frequency of the parent instance is " + instance.getCurrentFrequncy());
-                    LOG.info("the power of the parent instance is " + requiredPowerInstance);
                     LOG.info("service boosting decision: (instance boosting), the slowest service instance already running at maximum frequency");
                     return decision;
                 }
@@ -933,6 +931,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     LOG.info("service boosting decision: (always frequency boosting), increasing the frequency from " + instance.getCurrentFrequncy() + "--->" + freqRangeList.get(index - 1) + "GHz");
                 } else {
                     decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                    decision.setFrequency(instance.getCurrentFrequncy());
                     decision.setRequiredPower(requiredPowerInstance);
                     LOG.info("service boosting decision: (instance boosting), the slowest service instance already running at maximum frequency");
                 }
