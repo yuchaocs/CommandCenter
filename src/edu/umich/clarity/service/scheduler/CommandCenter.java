@@ -765,6 +765,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 // relocate the power budget, if true perform the boosting decision
                 boolean accommodateDecision = true;
                 if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                    LOG.info("boosting decision required power is " + decision.getRequiredPower() + " and frequency is " + decision.getFrequency());
                     accommodateDecision = relocatePowerBudget(serviceInstanceList, decision.getRequiredPower());
                 } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
                     while (!relocatePowerBudget(serviceInstanceList, decision.getRequiredPower())) {
