@@ -34,7 +34,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
     private static final String[] TOTAL_LATENCY_FILE_HEADER = {"query_id", "total_queuing", "total_serving"};
-    private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance"};
+    private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "tokenizer_queuing", "tokenizer_serving", "tokenizer_instance", "pos_queuing", "pos_serving", "pos_instance", "score_queuing", "score_serving", "score_instance"};
     private static final String[] FREQUENCY_FILE_HEADER = {"adjust_id", "service_instance", "timestamp", "frequency"};
     private static final String[] EXPECTED_DELAY_FILE_HEADER = {"time", "service_instance", "expected_delay"};
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "elapse_time", "package_power"};
@@ -142,9 +142,13 @@ public class CommandCenter implements SchedulerService.Iface {
             freqRangeList.add(Double.valueOf((dFormat.format(i))));
         }
 
-        sirius_workflow.add("asr");
-        sirius_workflow.add("imm");
-        sirius_workflow.add("qa");
+//        sirius_workflow.add("asr");
+//        sirius_workflow.add("imm");
+//        sirius_workflow.add("qa");
+        sirius_workflow.add("tokenizer");
+        sirius_workflow.add("pos");
+        //sirius_workflow.add("qa");
+
         String workflow = "";
         for (int i = 0; i < sirius_workflow.size(); i++) {
             workflow += sirius_workflow.get(i);
