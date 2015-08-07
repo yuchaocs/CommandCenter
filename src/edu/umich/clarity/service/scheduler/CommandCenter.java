@@ -706,7 +706,6 @@ public class CommandCenter implements SchedulerService.Iface {
                             estimatedLatency = instance.getCurrentQueueLength() == 0 ? (instance.getQueuingTimeAvg() + instance.getServingTimeAvg()) : instance.getCurrentQueueLength() * (instance.getQueuingTimeAvg() + instance.getServingTimeAvg());
                             LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
                             LOG.info("average queuing time: " + instance.getQueuingTimeAvg() + "; queue length: " + currentQueueLength + "; 99th queuing time: " + instance.getQueuingTimePercentile() + "; average serving time: " + (totalServing / statLength) + "; 99th serving time: " + instance.getServingTimePercentile() + "; estimated queuing time: " + estimatedLatency);
-
                         } else {
                             instance.setQueuingTimeAvg(0);
                             instance.setCurrentQueueLength(0);
@@ -762,60 +761,64 @@ public class CommandCenter implements SchedulerService.Iface {
             Double queuingTimeDifference = (slowestQueuingTimeAvg + slowestServingTimeAvg) * slowestQueueLength - (fastestQueuingTimeAvg + fastestServingTimeAvg) * fastestQueueLength;
             if (Double.compare(queuingTimeDifference, ADJUST_THRESHOLD) > 0) {
                 ServiceInstance slowestInstance = serviceInstanceList.get(0);
+                if (candidateMap.get(slowestInstance.getServiceType()).size() != 0) {
 //                LOG.info("the slowest service instance is " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " with estimated queuing delay " + slowestInstance.getQueuingTimeAvg());
-                // predict the tail latency of increasing frequency and launching new service instance
-                BoostDecision decision = predictBoostDecision(slowestInstance);
-                serviceInstanceList.remove(0);
-                // relocate the power budget, if true perform the boosting decision
-                boolean accommodateDecision = true;
-                if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
-                    LOG.info("boosting decision required power is " + decision.getRequiredPower() + " and frequency is " + decision.getFrequency());
-                    accommodateDecision = relocatePowerBudget(serviceInstanceList, decision.getRequiredPower());
-                } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
-                    while (!relocatePowerBudget(serviceInstanceList, decision.getRequiredPower())) {
-                        int freqIndex = freqRangeList.indexOf(decision.getFrequency());
-                        if (freqIndex > 0) {
-                            if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
-                                int slowFreqIndex = freqRangeList.indexOf(slowestInstance.getCurrentFrequncy());
-                                if (freqIndex == (slowFreqIndex + 1)) {
-                                    accommodateDecision = false;
-                                    break;
+                    // predict the tail latency of increasing frequency and launching new service instance
+                    BoostDecision decision = predictBoostDecision(slowestInstance);
+                    serviceInstanceList.remove(0);
+                    // relocate the power budget, if true perform the boosting decision
+                    boolean accommodateDecision = true;
+                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                        LOG.info("boosting decision required power is " + decision.getRequiredPower() + " and frequency is " + decision.getFrequency());
+                        accommodateDecision = relocatePowerBudget(serviceInstanceList, decision.getRequiredPower());
+                    } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
+                        while (!relocatePowerBudget(serviceInstanceList, decision.getRequiredPower())) {
+                            int freqIndex = freqRangeList.indexOf(decision.getFrequency());
+                            if (freqIndex > 0) {
+                                if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
+                                    int slowFreqIndex = freqRangeList.indexOf(slowestInstance.getCurrentFrequncy());
+                                    if (freqIndex == (slowFreqIndex + 1)) {
+                                        accommodateDecision = false;
+                                        break;
+                                    }
                                 }
+                                double currentPower = PowerModel.getPowerPerFreq(decision.getFrequency());
+                                double reducedPower = PowerModel.getPowerPerFreq(freqRangeList.get(freqIndex - 1));
+                                decision.setRequiredPower(decision.getRequiredPower() - (currentPower - reducedPower));
+                                decision.setFrequency(freqRangeList.get(freqIndex - 1));
+                            } else {
+                                accommodateDecision = false;
+                                break;
                             }
-                            double currentPower = PowerModel.getPowerPerFreq(decision.getFrequency());
-                            double reducedPower = PowerModel.getPowerPerFreq(freqRangeList.get(freqIndex - 1));
-                            decision.setRequiredPower(decision.getRequiredPower() - (currentPower - reducedPower));
-                            decision.setFrequency(freqRangeList.get(freqIndex - 1));
-                        } else {
-                            accommodateDecision = false;
-                            break;
+                            LOG.info("the recycled power is not capable to fully perform the boosting decision");
+                            LOG.info("decreasing the frequency from " + freqRangeList.get(freqIndex) + "--->" + decision.getFrequency() + "GHz");
                         }
-                        LOG.info("the recycled power is not capable to fully perform the boosting decision");
-                        LOG.info("decreasing the frequency from " + freqRangeList.get(freqIndex) + "--->" + decision.getFrequency() + "GHz");
                     }
-                }
-                if (accommodateDecision) {
-                    if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
-                        IPAService.Client client = null;
-                        double oldFreq = slowestInstance.getCurrentFrequncy();
-                        try {
-                            TClient clientDelegate = new TClient();
-                            client = clientDelegate.createIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
-                            client.updatBudget(decision.getFrequency());
-                            clientDelegate.close();
-                            slowestInstance.setCurrentFrequncy(decision.getFrequency());
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        } catch (TException e) {
-                            e.printStackTrace();
+                    if (accommodateDecision) {
+                        if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
+                            IPAService.Client client = null;
+                            double oldFreq = slowestInstance.getCurrentFrequncy();
+                            try {
+                                TClient clientDelegate = new TClient();
+                                client = clientDelegate.createIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
+                                client.updatBudget(decision.getFrequency());
+                                clientDelegate.close();
+                                slowestInstance.setCurrentFrequncy(decision.getFrequency());
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            } catch (TException e) {
+                                e.printStackTrace();
+                            }
+                            LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
+                        } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                            //slowestInstance.setCurrentFrequncy(decision.getFrequency());
+                            launchServiceInstance(slowestInstance, decision.getFrequency());
                         }
-                        LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
-                    } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
-                        //slowestInstance.setCurrentFrequncy(decision.getFrequency());
-                        launchServiceInstance(slowestInstance, decision.getFrequency());
+                    } else {
+                        LOG.info("recycling failed, not enough power budget to perform the stage boosting");
                     }
                 } else {
-                    LOG.info("recycling failed, not enough power budget to perform the stage boosting");
+                    LOG.info("node manager has ran out of service instances, skip current adjustment");
                 }
             } else {
                 LOG.info("the service instances are already balanced, skip current adjusting interval");
