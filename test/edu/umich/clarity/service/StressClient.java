@@ -199,7 +199,7 @@ public class StressClient {
      * Generate the load that follows Poisson distribution.
      */
     public void genPoissonLoad(int num_client) {
-        String NEXT_STAGE = "asr";
+        String NEXT_STAGE = "tokenizer";
         List sampleEntries = null;
         try {
             CSVReader reader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator +

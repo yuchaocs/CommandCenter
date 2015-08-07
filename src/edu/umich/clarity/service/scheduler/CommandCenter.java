@@ -72,6 +72,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static CSVWriter expectedDelayWriter = null;
     private static CSVWriter pegasusPowerWriter = null;
     private static CSVReader speedupReader = null;
+    private static CSVReader workflowReader = null;
     private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
@@ -145,18 +146,9 @@ public class CommandCenter implements SchedulerService.Iface {
 //        sirius_workflow.add("asr");
 //        sirius_workflow.add("imm");
 //        sirius_workflow.add("qa");
-        sirius_workflow.add("tokenizer");
-        sirius_workflow.add("pos");
         //sirius_workflow.add("qa");
-
-        String workflow = "";
-        for (int i = 0; i < sirius_workflow.size(); i++) {
-            workflow += sirius_workflow.get(i);
-            if ((i + 1) < sirius_workflow.size()) {
-                workflow += "->";
-            }
-        }
         try {
+            workflowReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "workflow.csv"), ',', '\n', 1);
             speedupReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "freq.csv"), ',', '\n', 1);
             latencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             serviceLatencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "service_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
@@ -187,9 +179,28 @@ public class CommandCenter implements SchedulerService.Iface {
         }
         POWER_BUDGET.set(GLOBAL_POWER_BUDGET);
 
-        // build the speedup sheet
         String[] nextLine;
         int index = 0;
+        try {
+            while ((nextLine = workflowReader.readNext()) != null) {
+                for (int i = 0; i < nextLine.length; i++) {
+                    sirius_workflow.add(nextLine[i]);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        String workflow = "";
+        for (int i = 0; i < sirius_workflow.size(); i++) {
+            workflow += sirius_workflow.get(i);
+            if ((i + 1) < sirius_workflow.size()) {
+                workflow += "->";
+            }
+        }
+
+        // build the speedup sheet
+        index = 0;
         try {
             while ((nextLine = speedupReader.readNext()) != null) {
                 Map<Double, Double> speedup = new HashMap<Double, Double>();
