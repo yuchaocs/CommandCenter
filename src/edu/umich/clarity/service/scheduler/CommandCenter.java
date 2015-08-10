@@ -770,11 +770,15 @@ public class CommandCenter implements SchedulerService.Iface {
             String instanceRanking = "";
             String freqList = "";
             String loadProb = "";
+            List<Integer> acceleratorList = new LinkedList<Integer>();
             for (int i = 0; i < serviceInstanceList.size(); i++) {
                 ServiceInstance instance = serviceInstanceList.get(i);
                 instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort() + "-->";
                 freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy() + "-->";
                 loadProb += instance.getServiceType() + "@" + instance.getLoadProb() + "-->";
+                if (instance.isAccelerator()) {
+                    acceleratorList.add(i);
+                }
             }
             LOG.info("service instance ranking from slowest to fastest");
             LOG.info(instanceRanking);
@@ -797,6 +801,9 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceInstanceList.remove(0);
                     // relocate the power budget, if true perform the boosting decision
                     boolean accommodateDecision = true;
+                    for (Integer index : acceleratorList) {
+                        serviceInstanceList.remove(index);
+                    }
                     if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
                         LOG.info("boosting decision required power is " + decision.getRequiredPower() + " and frequency is " + decision.getFrequency());
                         accommodateDecision = relocatePowerBudget(serviceInstanceList, decision.getRequiredPower());
