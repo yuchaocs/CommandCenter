@@ -799,7 +799,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     // predict the tail latency of increasing frequency and launching new service instance
                     BoostDecision decision = predictBoostDecision(slowestInstance);
                     for (Integer index : acceleratorList) {
-                        serviceInstanceList.remove(index);
+                        serviceInstanceList.remove(index.intValue());
                     }
                     serviceInstanceList.remove(0);
                     // relocate the power budget, if true perform the boosting decision
