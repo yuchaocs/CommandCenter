@@ -24,6 +24,7 @@ public class ServiceInstance {
     private int queriesBetweenWithdraw;
     private int queriesBetweenAdjust;
     private long renewTimestamp;
+    private boolean accelerator;
 
     public ServiceInstance() {
         this.queuing_latency = new LinkedList<Double>();
@@ -31,6 +32,7 @@ public class ServiceInstance {
         this.loadProb = 1;
         this.queriesBetweenWithdraw = 0;
         this.queriesBetweenAdjust = 0;
+        this.accelerator = false;
     }
 
     public List<Double> getQueuing_latency() {
@@ -151,5 +153,13 @@ public class ServiceInstance {
 
     public void setQueriesBetweenAdjust(int queriesBetweenAdjust) {
         this.queriesBetweenAdjust = queriesBetweenAdjust;
+    }
+
+    public boolean isAccelerator() {
+        return accelerator;
+    }
+
+    public void setAccelerator(boolean accelerator) {
+        this.accelerator = accelerator;
     }
 }

@@ -8,6 +8,7 @@ public class BoostDecision {
     public static final String INSTANCE_BOOST = "instance";
     public static final String ADAPTIVE_BOOST = "adaptive";
     public static final String PEGASUS_BOOST = "pegasus";
+    public static final String ACCELERATOR_BOOST = "accelerator";
     private String decision;
     private double requiredPower;
     private double loadProb;
