@@ -798,12 +798,12 @@ public class CommandCenter implements SchedulerService.Iface {
 //                LOG.info("the slowest service instance is " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " with estimated queuing delay " + slowestInstance.getQueuingTimeAvg());
                     // predict the tail latency of increasing frequency and launching new service instance
                     BoostDecision decision = predictBoostDecision(slowestInstance);
-                    serviceInstanceList.remove(0);
-                    // relocate the power budget, if true perform the boosting decision
-                    boolean accommodateDecision = true;
                     for (Integer index : acceleratorList) {
                         serviceInstanceList.remove(index);
                     }
+                    serviceInstanceList.remove(0);
+                    // relocate the power budget, if true perform the boosting decision
+                    boolean accommodateDecision = true;
                     if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
                         LOG.info("boosting decision required power is " + decision.getRequiredPower() + " and frequency is " + decision.getFrequency());
                         accommodateDecision = relocatePowerBudget(serviceInstanceList, decision.getRequiredPower());
