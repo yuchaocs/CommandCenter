@@ -797,7 +797,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceInstanceList.remove(0);
                     // relocate the power budget, if true perform the boosting decision
                     boolean accommodateDecision = true;
-                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ACCELERATOR_BOOST)) {
+                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST) || BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
                         LOG.info("boosting decision required power is " + decision.getRequiredPower() + " and frequency is " + decision.getFrequency());
                         accommodateDecision = relocatePowerBudget(serviceInstanceList, decision.getRequiredPower());
                     } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
@@ -943,7 +943,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 tailLatencyFreq = percentile.evaluate(totalLatencyFreqArray, LATENCY_PERCENTILE);
                 tailLatencyInstance = percentile.evaluate(totalLatencyInstanceArray, LATENCY_PERCENTILE);
                 tailLatencyAccelerator = percentile.evaluate(totalLatencyAcceleratorArray, LATENCY_PERCENTILE);
-                if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ACCELERATOR_BOOST) && acceleratorCandidateMap.get(instance.getServiceType()).size() != 0) {
+                if (acceleratorCandidateMap.get(instance.getServiceType()).size() != 0) {
                     if (tailLatencyAccelerator < tailLatencyInstance && tailLatencyAccelerator < tailLatencyFreq) {
                         LOG.info("service boosting decision: (accelerator boosting)" + " with tail latency " + tailLatencyAccelerator + " compared to instance boosting (" + tailLatencyInstance + ") and frequency boosting (" + tailLatencyFreq + ")");
                         decision.setDecision(BoostDecision.ACCELERATOR_BOOST);
