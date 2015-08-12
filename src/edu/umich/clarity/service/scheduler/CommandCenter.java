@@ -770,14 +770,14 @@ public class CommandCenter implements SchedulerService.Iface {
             String instanceRanking = "";
             String freqList = "";
             String loadProb = "";
-            List<Integer> acceleratorList = new LinkedList<Integer>();
+            List<ServiceInstance> acceleratorList = new LinkedList<ServiceInstance>();
             for (int i = 0; i < serviceInstanceList.size(); i++) {
                 ServiceInstance instance = serviceInstanceList.get(i);
                 instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort() + "-->";
                 freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy() + "-->";
                 loadProb += instance.getServiceType() + "@" + instance.getLoadProb() + "-->";
                 if (instance.isAccelerator()) {
-                    acceleratorList.add(i);
+                    acceleratorList.add(instance);
                 }
             }
             LOG.info("service instance ranking from slowest to fastest");
@@ -798,11 +798,8 @@ public class CommandCenter implements SchedulerService.Iface {
 //                LOG.info("the slowest service instance is " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " with estimated queuing delay " + slowestInstance.getQueuingTimeAvg());
                     // predict the tail latency of increasing frequency and launching new service instance
                     BoostDecision decision = predictBoostDecision(slowestInstance);
-
-                    for (Integer index : acceleratorList) {
-                        LOG.info("remove the accelerator from index " + index.intValue());
-                        LOG.info("the size of the service instance list is " + serviceInstanceList.size());
-                        serviceInstanceList.remove(index.intValue());
+                    for (ServiceInstance acceleratorInstance : acceleratorList) {
+                        serviceInstanceList.remove(acceleratorInstance);
                     }
                     serviceInstanceList.remove(0);
                     // relocate the power budget, if true perform the boosting decision
