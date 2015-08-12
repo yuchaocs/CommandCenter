@@ -798,8 +798,10 @@ public class CommandCenter implements SchedulerService.Iface {
 //                LOG.info("the slowest service instance is " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " with estimated queuing delay " + slowestInstance.getQueuingTimeAvg());
                     // predict the tail latency of increasing frequency and launching new service instance
                     BoostDecision decision = predictBoostDecision(slowestInstance);
+
                     for (Integer index : acceleratorList) {
                         LOG.info("remove the accelerator from index " + index.intValue());
+                        LOG.info("the size of the service instance list is " + serviceInstanceList.size());
                         serviceInstanceList.remove(index.intValue());
                     }
                     serviceInstanceList.remove(0);
