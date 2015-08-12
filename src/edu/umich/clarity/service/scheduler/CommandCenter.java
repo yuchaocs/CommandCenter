@@ -96,6 +96,8 @@ public class CommandCenter implements SchedulerService.Iface {
 
     private Map<String, Float> acceleratorSpeedup = new HashMap<String, Float>();
 
+    private static final DecimalFormat sFormat = new DecimalFormat("#.#");
+
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
@@ -954,8 +956,8 @@ public class CommandCenter implements SchedulerService.Iface {
                     if (tailLatencyAccelerator < tailLatencyInstance && tailLatencyAccelerator < tailLatencyFreq) {
                         LOG.info("service boosting decision: (accelerator boosting)" + " with tail latency " + tailLatencyAccelerator + " compared to instance boosting (" + tailLatencyInstance + ") and frequency boosting (" + tailLatencyFreq + ")");
                         decision.setDecision(BoostDecision.ACCELERATOR_BOOST);
-                        decision.setFrequency(2.5);
-                        decision.setRequiredPower(2);
+                        decision.setFrequency(Double.valueOf(sFormat.format(2.5)));
+                        decision.setRequiredPower(Double.valueOf(sFormat.format(2.0)));
                     } else {
                         if (tailLatencyFreq < tailLatencyInstance) {
                             LOG.info("service boosting decision: (frequency boosting)" + " with tail latency " + tailLatencyFreq + " compared to " + tailLatencyInstance + " if launching new instance");
