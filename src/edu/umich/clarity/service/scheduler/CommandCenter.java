@@ -952,7 +952,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 tailLatencyFreq = percentile.evaluate(totalLatencyFreqArray, LATENCY_PERCENTILE);
                 tailLatencyInstance = percentile.evaluate(totalLatencyInstanceArray, LATENCY_PERCENTILE);
                 tailLatencyAccelerator = percentile.evaluate(totalLatencyAcceleratorArray, LATENCY_PERCENTILE);
-                if (acceleratorCandidateMap.get(instance.getServiceType()).size() != 0) {
+                if (acceleratorCandidateMap.get(instance.getServiceType()) != null && acceleratorCandidateMap.get(instance.getServiceType()).size() != 0) {
                     if (tailLatencyAccelerator < tailLatencyInstance && tailLatencyAccelerator < tailLatencyFreq) {
                         LOG.info("service boosting decision: (accelerator boosting)" + " with tail latency " + tailLatencyAccelerator + " compared to instance boosting (" + tailLatencyInstance + ") and frequency boosting (" + tailLatencyFreq + ")");
                         decision.setDecision(BoostDecision.ACCELERATOR_BOOST);
