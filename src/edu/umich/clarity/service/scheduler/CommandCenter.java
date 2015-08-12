@@ -173,13 +173,13 @@ public class CommandCenter implements SchedulerService.Iface {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        for (int i = 9075; i < 9080; i++) {
+        for (int i = 9071; i < 9080; i++) {
             candidatePortList.add(i);
         }
-        for (int i = 9085; i < 9090; i++) {
+        for (int i = 9081; i < 9090; i++) {
             candidatePortList.add(i);
         }
-        for (int i = 9095; i < 9100; i++) {
+        for (int i = 9091; i < 9100; i++) {
             candidatePortList.add(i);
         }
         POWER_BUDGET.set(GLOBAL_POWER_BUDGET);
@@ -333,7 +333,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 LOG.info("putting it into the live instance list (current size for " + appName + ": " + serviceMap.get(appName).size() + ")");
                 LOG.info("the current available power budget is " + POWER_BUDGET.get().doubleValue());
             } else { // candidate instances, put into the candidate list
-                if (hostPort.getPort() == 9076 || hostPort.getPort() == 9086 || hostPort.getPort() == 9096) {
+                if (hostPort.getPort() == 9075 || hostPort.getPort() == 9074 || hostPort.getPort() == 9085 || hostPort.getPort() == 9084 || hostPort.getPort() == 9096 || hostPort.getPort() == 9097 || hostPort.getPort() == 9098 || hostPort.getPort() == 9099) {
                     serviceInstance.setAccelerator(true);
                     if (acceleratorCandidateMap.containsKey(appName)) {
                         acceleratorCandidateMap.get(appName).add(serviceInstance);
