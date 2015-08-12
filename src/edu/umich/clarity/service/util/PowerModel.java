@@ -14,14 +14,14 @@ public class PowerModel {
 
     public static double getPowerPerFreq(double freq) {
         double estimated_power = 0.0;
-        if (Double.compare(freq, FN) > 0) {
-            estimated_power = 2.0;
-        } else {
+        if (Double.compare(freq, FN) < 0) {
             double dynP0 = P0 / 1.2;
             double staP0 = 0.2 * dynP0;
             double dynP = dynP0 * Math.pow(freq / F0, 2.7);
             double staP = staP0 * (freq / F0);
             estimated_power = dynP + staP;
+        } else {
+            estimated_power = 2.0;
         }
         return Double.valueOf(dFormat.format(estimated_power));
     }
