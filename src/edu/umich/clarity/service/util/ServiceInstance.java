@@ -4,6 +4,7 @@ import edu.umich.clarity.thrift.THostPort;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Created by hailong on 7/2/15.
@@ -151,5 +152,15 @@ public class ServiceInstance {
 
     public void setQueriesBetweenAdjust(int queriesBetweenAdjust) {
         this.queriesBetweenAdjust = queriesBetweenAdjust;
+    }
+
+    @Override
+    public boolean equals(Object instance) {
+        boolean tags = false;
+        ServiceInstance instace2 = (ServiceInstance) instance;
+        if (this.getHostPort().getIp().equalsIgnoreCase(instace2.getHostPort().getIp()) && this.getHostPort().getPort() == instace2.getHostPort().getPort()) {
+            tags = true;
+        }
+        return tags;
     }
 }

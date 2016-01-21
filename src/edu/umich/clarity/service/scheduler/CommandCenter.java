@@ -10,7 +10,6 @@ import org.apache.log4j.PropertyConfigurator;
 import org.apache.thrift.TException;
 
 import java.io.*;
-import java.lang.reflect.Array;
 import java.text.DecimalFormat;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
@@ -18,7 +17,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  *
@@ -34,26 +32,28 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final long LATENCY_BUDGET = 100;
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
-    private static final String[] TOTAL_LATENCY_FILE_HEADER = {"query_id", "total_queuing", "total_serving"};
-    private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "tokenizer_queuing", "tokenizer_serving", "tokenizer_instance", "pos_queuing", "pos_serving", "pos_instance", "score_queuing", "score_serving", "score_instance"};
+    private static final String[] TOTAL_LATENCY_FILE_HEADER = {"adjust_id", "total_queuing", "total_serving", "total_latency", "percentile_latency", "global_power"};
+    private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance"};
     private static final String[] FREQUENCY_FILE_HEADER = {"adjust_id", "service_instance", "frequency", "power"};
-    private static final String[] EXPECTED_DELAY_FILE_HEADER = {"time", "service_instance", "expected_delay"};
+    private static final String[] STAGE_LATENCY_FILE_HEADER = {"adjust_id", "stage_name", "total_queuing", "total_serving", "total_latency"};
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "elapse_time", "package_power"};
-    private static final double DEFAULT_FREQUENCY = 1.8;
-    private static final int MINIMUM_QUEUE_LENGTH = 3;
+
+    // private static final double DEFAULT_FREQUENCY = 1.8;
+    // private static final int MINIMUM_QUEUE_LENGTH = 3;
+
     private static final double MAX_PACKAGE_POWER = (14 + 40) / 0.125;
     //public static boolean VANILLA_MODE = false;
     public static boolean VANILLA_MODE;
-    //private static double GLOBAL_POWER_BUDGET = 9.48 * 3;
-    private static double GLOBAL_POWER_BUDGET;
+    //private static double GLOBAL_POWER_CONSUMPTION = 9.48 * 3;
+    private static double GLOBAL_POWER_CONSUMPTION = 0;
     //private static int SCHEDULER_PORT = 8888;
     private static int SCHEDULER_PORT;
     // the interval to adjust power budget (per queries)
-    //private static int ADJUST_BUDGET_INTERVAL = 50;
-    private static int ADJUST_BUDGET_INTERVAL;
+    //private static int ADJUST_QOS_INTERVAL = 50;
+    private static int ADJUST_QOS_INTERVAL;
     // the interval to withdraw the idle service instances (per queries)
-    //private static int WITHDRAW_BUDGET_INTERVAL = ADJUST_BUDGET_INTERVAL * 3;
-    private static int WITHDRAW_BUDGET_INTERVAL;
+    //private static int WITHDRAW_BUDGET_INTERVAL = ADJUST_QOS_INTERVAL * 3;
+    // private static int WITHDRAW_BUDGET_INTERVAL;
     // the number of queries to warm up the services
     //private static int WARMUP_COUNT = 20;
     private static int WARMUP_COUNT;
@@ -65,35 +65,43 @@ public class CommandCenter implements SchedulerService.Iface {
     //private static double LATENCY_PERCENTILE = 99;
     private static double LATENCY_PERCENTILE;
     private static ConcurrentMap<String, List<ServiceInstance>> serviceMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
-    private static Map<String, ArrayList<Long>> stageRatioMap = new HashMap<String, ArrayList<Long>>();
-    private static Map<String, Double> frequencyStat = new HashMap<String, Double>();
+    // <stage, <service_instance, [queue_time, service_time]>
+    private static Map<String, HashMap<ServiceInstance, ArrayList<Double>>> stageQueryHist = new HashMap<String, HashMap<ServiceInstance, ArrayList<Double>>>();
+
+    private static Map<String, Double> stageQoSRatio = new HashMap<String, Double>();
+
+    // private static Map<String, Double> frequencyStat = new HashMap<String, Double>();
     private static ConcurrentMap<String, List<ServiceInstance>> candidateMap = new ConcurrentHashMap<String, List<ServiceInstance>>();
-    private static CSVWriter latencyWriter = null;
+    // private static CSVWriter queryLatencyWriter = null;
     private static CSVWriter serviceLatencyWriter = null;
-    private static CSVWriter frequencyWriter = null;
-    private static CSVWriter expectedDelayWriter = null;
+    private static CSVWriter queryLatencyWriter = null;
+    private static CSVWriter powerWriter = null;
+    private static CSVWriter stageLatencyWriter = null;
     private static CSVWriter pegasusPowerWriter = null;
+
     private static CSVReader speedupReader = null;
     private static CSVReader workflowReader = null;
-    private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
+    // private static AtomicReference<Double> POWER_BUDGET = new AtomicReference<Double>();
     private static List<Integer> candidatePortList = new ArrayList<Integer>();
     private static Map<String, Map<Double, Double>> speedupSheet = new HashMap<String, Map<Double, Double>>();
     private static List<Double> freqRangeList = new LinkedList<Double>();
     //private static String BOOSTING_DECISION = BoostDecision.ADAPTIVE_BOOST;
-    private static String BOOSTING_DECISION;
     private static long initialAdjustTimestamp;
     private static long initialPegasusTimestamp;
     //private static boolean WITHDRAW_SERVICE_INSTANCE = true;
-    private static boolean WITHDRAW_SERVICE_INSTANCE;
-    private static int ADAPTIVE_ADJUST_ROUND = 0;
-    // pegasus
-    private static List<Long> end2endQueryLatency = new LinkedList<Long>();
 
-    //private static double qosTarget = 21.0;
-    private static double qosTarget;
-    private static double upperThreshold;
-    private static double midThreshold;
-    private static double lowerThreshold;
+    private static boolean WITHDRAW_SERVICE_INSTANCE;
+    private static int ADJUST_ROUND = 0;
+
+    // pegasus
+    private static String BOOSTING_DECISION;
+    private static List<Double> end2endQueryLatency = new LinkedList<Double>();
+
+    //private static double QoSTarget = 21.0;
+    private static long QoSTarget = 2000;
+    // private static double upperThreshold;
+    // private static double midThreshold = 0.85;
+    // private static double lowerThreshold;
 
     private static double currentPackagePower = (14 + 40) / 0.125;
     private static int waitRound = 0;
@@ -107,42 +115,41 @@ public class CommandCenter implements SchedulerService.Iface {
     /**
      * Guard the QoS while minimizing the power.
      *
-     * @param args args[0]: port, args[1]: adjust_interval, args[3]: warm_up_account, args[4]: adjust_threshold, args[5]: tail_percentile, args[10]: qosTarget, args[11]: upperThreshold, args[12]: midThreshold, args[13]: lowerThreshold
+     * @param args args[0]: port, args[1]: adjust_interval, args[3]: warm_up_account, args[4]: adjust_threshold, args[5]: tail_percentile, args[10]: QoSTarget, args[11]: upperThreshold, args[12]: midThreshold, args[13]: lowerThreshold
      * @throws IOException
      */
     public static void main(String[] args) throws IOException {
         CommandCenter commandCenter = new CommandCenter();
         if (args.length == 11) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
-            ADJUST_BUDGET_INTERVAL = Integer.valueOf(args[1]);
-            WITHDRAW_BUDGET_INTERVAL = Integer.valueOf(args[2]);
+            ADJUST_QOS_INTERVAL = Integer.valueOf(args[1]);
             WARMUP_COUNT = Integer.valueOf(args[3]);
             ADJUST_THRESHOLD = Double.valueOf(args[4]);
             LATENCY_PERCENTILE = Double.valueOf(args[5]);
-
-            // the global power consumption of sirius applications
-            GLOBAL_POWER_BUDGET = Double.valueOf(args[6]);
-
             if (args[7].equalsIgnoreCase("vanilla")) {
                 VANILLA_MODE = true;
             } else if (args[7].equalsIgnoreCase("recycle")) {
                 VANILLA_MODE = false;
             }
             BOOSTING_DECISION = args[8];
+            QoSTarget = Long.valueOf(args[10]);
+
+            // WITHDRAW_BUDGET_INTERVAL = Integer.valueOf(args[2]);
+            // the global power consumption of sirius applications
+            // GLOBAL_POWER_CONSUMPTION = Double.valueOf(args[6]);
+            /*
             if (args[9].equalsIgnoreCase("withdraw")) {
                 WITHDRAW_SERVICE_INSTANCE = true;
             } else if (args[9].equalsIgnoreCase("no-withdraw")) {
                 WITHDRAW_SERVICE_INSTANCE = false;
             }
-
-            qosTarget = Double.valueOf(args[10]);
-            upperThreshold = Double.valueOf(args[11]);
-            midThreshold = Double.valueOf(args[12]);
-            lowerThreshold = Double.valueOf(args[13]);
-
-            LOG.info("launching the command center with " + args[7] + " mode");
-            LOG.info("global power budget: " + GLOBAL_POWER_BUDGET + ", adjust interval: " + ADJUST_BUDGET_INTERVAL + ", adjust threshold: " + ADJUST_THRESHOLD + ", latency percentile: " + LATENCY_PERCENTILE);
-            LOG.info("boosting policy: " + BOOSTING_DECISION + ", withdraw mode: " + args[9] + ", withdraw interval " + WITHDRAW_BUDGET_INTERVAL);
+            */
+            // upperThreshold = Double.valueOf(args[11]);
+            // midThreshold = Double.valueOf(args[12]);
+            // lowerThreshold = Double.valueOf(args[13]);
+            LOG.info("the command center is running in " + args[7] + " mode, with " + BOOSTING_DECISION + " boosting decision");
+            LOG.info("QoS target is " + QoSTarget + ", with latency percentile " + LATENCY_PERCENTILE + "%");
+            LOG.info("adjust interval is " + ADJUST_QOS_INTERVAL + ", with adjust threshold " + ADJUST_THRESHOLD);
         }
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
                 commandCenter);
@@ -167,21 +174,21 @@ public class CommandCenter implements SchedulerService.Iface {
         try {
             workflowReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "workflow.csv"), ',', '\n', 1);
             speedupReader = new CSVReader(new FileReader(System.getProperty("user.dir") + File.separator + "freq.csv"), ',', '\n', 1);
-            latencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            queryLatencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "query_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             serviceLatencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "service_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            frequencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "frequency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            expectedDelayWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "expected_delay.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            pegasusPowerWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "pegasus_power.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            latencyWriter.writeNext(TOTAL_LATENCY_FILE_HEADER);
-            latencyWriter.flush();
-            frequencyWriter.writeNext(FREQUENCY_FILE_HEADER);
-            frequencyWriter.flush();
-            expectedDelayWriter.writeNext(EXPECTED_DELAY_FILE_HEADER);
-            expectedDelayWriter.flush();
-            pegasusPowerWriter.writeNext(PEGASUS_POWER_FILE_HEADER);
-            pegasusPowerWriter.flush();
+            powerWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "power.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            stageLatencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "stage_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            queryLatencyWriter.writeNext(TOTAL_LATENCY_FILE_HEADER);
+            queryLatencyWriter.flush();
             serviceLatencyWriter.writeNext(SERVICE_LATENCY_FILE_HEADER);
             serviceLatencyWriter.flush();
+            powerWriter.writeNext(FREQUENCY_FILE_HEADER);
+            powerWriter.flush();
+            stageLatencyWriter.writeNext(STAGE_LATENCY_FILE_HEADER);
+            stageLatencyWriter.flush();
+            pegasusPowerWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "pegasus_power.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
+            pegasusPowerWriter.writeNext(PEGASUS_POWER_FILE_HEADER);
+            pegasusPowerWriter.flush();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -194,7 +201,7 @@ public class CommandCenter implements SchedulerService.Iface {
         for (int i = 9095; i < 9100; i++) {
             candidatePortList.add(i);
         }
-        POWER_BUDGET.set(GLOBAL_POWER_BUDGET);
+        // POWER_BUDGET.set(GLOBAL_POWER_CONSUMPTION);
 
         String[] nextLine;
         int index = 0;
@@ -234,10 +241,9 @@ public class CommandCenter implements SchedulerService.Iface {
 //        for (String serviceType : speedupSheet.keySet()) {
 //            System.out.println(serviceType + ":" + speedupSheet.get(serviceType).get(FREQ_RANGE[5]));
 //        }
-
-        LOG.info("the global power consumption is " + POWER_BUDGET.get().doubleValue());
+        // LOG.info("the global power consumption is " + POWER_BUDGET.get().doubleValue());
         LOG.info("current workflow within command center is " + workflow);
-        //LOG.info("launching the power budget managing thread with adjusting interval per " + ADJUST_BUDGET_INTERVAL + " queries and recycling interval per " + WITHDRAW_BUDGET_INTERVAL + " queries");
+        //LOG.info("launching the power budget managing thread with adjusting interval per " + ADJUST_QOS_INTERVAL + " queries and recycling interval per " + WITHDRAW_BUDGET_INTERVAL + " queries");
         if (!VANILLA_MODE)
             new Thread(new powerBudgetAdjustRunnable()).start();
         // new Thread(new budgetAdjusterRunnable()).start();
@@ -255,10 +261,13 @@ public class CommandCenter implements SchedulerService.Iface {
         THostPort hostPort = null;
         List<ServiceInstance> service_list = serviceMap.get(serviceType);
         if (service_list != null && service_list.size() != 0)
+            hostPort = loadBalanceAssignService(service_list);
+            /*
             if (!VANILLA_MODE)
                 hostPort = loadBalanceAssignService(service_list);
             else
                 hostPort = randomAssignService(service_list);
+            */
         return hostPort;
     }
 
@@ -341,11 +350,12 @@ public class CommandCenter implements SchedulerService.Iface {
                     List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
                     serviceInstanceList.add(serviceInstance);
                     serviceMap.put(appName, serviceInstanceList);
-                    stageRatioMap.put(appName, new ArrayList<Long>());
+                    stageQoSRatio.put(appName, 0.0);
+                    stageQueryHist.put(appName, new HashMap<ServiceInstance, ArrayList<Double>>());
                 }
-                POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() + PowerModel.getPowerPerFreq(message.getBudget())));
+                GLOBAL_POWER_CONSUMPTION += PowerModel.getPowerPerFreq(message.getBudget());
                 LOG.info("putting it into the live instance list (current size for " + appName + ": " + serviceMap.get(appName).size() + ")");
-                LOG.info("the current global power consumption is " + POWER_BUDGET.get().doubleValue());
+                LOG.info("current global power consumption is " + GLOBAL_POWER_CONSUMPTION);
             } else { // candidate instances, put into the candidate list
                 if (candidateMap.containsKey(appName)) {
                     candidateMap.get(appName).add(serviceInstance);
@@ -373,18 +383,18 @@ public class CommandCenter implements SchedulerService.Iface {
                  * when the query entering the queue, the second timestamp is when
                  * the query get served, the third one is when the serving iss done.
                  */
-                ArrayList<String> csvEntry = new ArrayList<String>();
+                // ArrayList<String> csvEntry = new ArrayList<String>();
                 ArrayList<String> serviceCSVEntry = new ArrayList<String>();
-                long total_queuing = 0;
-                long total_serving = 0;
-                csvEntry.add(query.getName());
+                // long total_queuing = 0;
+                // long total_serving = 0;
+                // csvEntry.add(query.getName());
                 serviceCSVEntry.add(query.getName());
                 for (int i = 0; i < query.getTimestamp().size(); i++) {
                     LatencySpec latencySpec = query.getTimestamp().get(i);
                     long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
-                    total_queuing += queuing_time;
+                    // total_queuing += queuing_time;
                     long serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
-                    total_serving += serving_time;
+                    // total_serving += serving_time;
                     serviceCSVEntry.add("" + queuing_time);
                     serviceCSVEntry.add("" + serving_time);
                     serviceCSVEntry.add("" + latencySpec.getInstance_id());
@@ -395,19 +405,20 @@ public class CommandCenter implements SchedulerService.Iface {
 //                        + total_queuing + "ms" + " total serving " + total_serving
 //                        + "ms" + " at all stages with total latency "
 //                        + (total_queuing + total_serving) + "ms");
-                csvEntry.add("" + total_queuing);
-                csvEntry.add("" + total_serving);
+                // csvEntry.add("" + total_queuing);
+                // csvEntry.add("" + total_serving);
                 serviceLatencyWriter.writeNext(serviceCSVEntry.toArray(new String[serviceCSVEntry.size()]));
                 serviceLatencyWriter.flush();
-                latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                latencyWriter.flush();
+                // queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                // queryLatencyWriter.flush();
                 if (warmupCount.get() % 1000 == 0) {
                     LOG.info("stop processing queries at " + System.currentTimeMillis());
                 }
             }
+            /*
             if (warmupCount.get() == WARMUP_COUNT) {
                 initialAdjustTimestamp = System.currentTimeMillis();
-                initialPegasusTimestamp = initialAdjustTimestamp;
+                // initialPegasusTimestamp = initialAdjustTimestamp;
                 LOG.info("starting to processing the queries at " + initialAdjustTimestamp);
                 for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
                     for (ServiceInstance instance : entry.getValue()) {
@@ -417,6 +428,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                 }
             }
+            */
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -441,46 +453,106 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("starting the helper thread for adjusting power budget across stages");
             while (true) {
                 try {
+                    LOG.info("sleep for " + ADJUST_QOS_INTERVAL + " ms before performing QoS management");
+                    Thread.sleep(ADJUST_QOS_INTERVAL);
                     // long totalLatency = 0;
                     int finishedQueueSize = finishedQueryQueue.size();
-                    long totalLatency = 0;
+                    double totalLatency = 0;
+                    double totalQueuingTime = 0;
+                    double totalServingTime = 0;
                     Percentile percentile = new Percentile();
                     double[] queryDelayArray = new double[finishedQueueSize];
                     for (int queryNum = 0; queryNum < finishedQueueSize; queryNum++) {
                         QuerySpec query = finishedQueryQueue.take();
-                        long tempLatency = totalLatency;
+                        double tempLatency = totalLatency;
                         for (int i = 0; i < query.getTimestamp().size(); i++) {
                             LatencySpec latencySpec = query.getTimestamp().get(i);
-                            long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
-                            long serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
+                            double queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
+                            double serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
                             totalLatency += queuing_time + serving_time;
+                            totalQueuingTime += queuing_time;
+                            totalServingTime += serving_time;
                             String serviceType = latencySpec.getInstance_id().split("_")[0];
                             String host = latencySpec.getInstance_id().split("_")[1];
                             String port = latencySpec.getInstance_id().split("_")[2];
-                            stageRatioMap.get(serviceType).set(0, stageRatioMap.get(serviceType).get(0) + queuing_time);
-                            stageRatioMap.get(serviceType).set(1, stageRatioMap.get(serviceType).get(1) + serving_time);
                             for (ServiceInstance instance : serviceMap.get(serviceType)) {
                                 String instanceIp = instance.getHostPort().getIp();
                                 int instancePort = instance.getHostPort().getPort();
                                 if (instanceIp.equalsIgnoreCase(host) && instancePort == new Integer(port).intValue()) {
-                                    instance.getServing_latency().add(new Double(serving_time));
-                                    instance.getQueuing_latency().add(new Double(queuing_time));
+                                    instance.getServing_latency().add(serving_time);
+                                    instance.getQueuing_latency().add(queuing_time);
                                     // instance.setQueriesBetweenWithdraw(instance.getQueriesBetweenWithdraw() + 1);
                                     instance.setQueriesBetweenAdjust(instance.getQueriesBetweenAdjust() + 1);
+                                    double histStageLatency = stageQoSRatio.get(instance.getServiceType());
+                                    stageQoSRatio.put(instance.getServiceType(), histStageLatency + serving_time + queuing_time);
+                                    if (stageQueryHist.get(serviceType).get(instance) == null) {
+                                        ArrayList<Double> queryLatency = new ArrayList<Double>();
+                                        queryLatency.set(0, queuing_time / finishedQueueSize);
+                                        queryLatency.set(1, serving_time / finishedQueueSize);
+                                        stageQueryHist.get(serviceType).put(instance, queryLatency);
+                                    } else {
+                                        double historyQueueLatency = stageQueryHist.get(serviceType).get(instance).get(0);
+                                        double historyServiceLatency = stageQueryHist.get(serviceType).get(instance).get(1);
+                                        stageQueryHist.get(serviceType).get(instance).set(0, historyQueueLatency + queuing_time / finishedQueueSize);
+                                        stageQueryHist.get(serviceType).get(instance).set(1, historyServiceLatency + serving_time / finishedQueueSize);
+                                    }
                                 }
                             }
                         }
                         queryDelayArray[queryNum] = totalLatency - tempLatency;
                     }
-                    for (String serviceType : stageRatioMap.keySet()) {
-                        stageRatioMap.get(serviceType).set(0, stageRatioMap.get(serviceType).get(0) / finishedQueueSize);
-                        stageRatioMap.get(serviceType).set(1, stageRatioMap.get(serviceType).get(1) / finishedQueueSize);
+                    end2endQueryLatency.add(totalLatency);
+
+                    ArrayList<String> csvEntry = new ArrayList<String>();
+                    ArrayList<String> stageCSVEntry = new ArrayList<String>();
+
+                    csvEntry.add("" + ADJUST_ROUND);
+                    csvEntry.add("" + (totalQueuingTime / finishedQueueSize));
+                    csvEntry.add("" + (totalServingTime / finishedQueueSize));
+                    csvEntry.add("" + (totalLatency / finishedQueueSize));
+                    csvEntry.add("" + percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
+                    csvEntry.add("" + GLOBAL_POWER_CONSUMPTION);
+
+                    for (String stage : stageQueryHist.keySet()) {
+                        double queuingTime = 0;
+                        double servingTime = 0;
+                        double latency = 0;
+                        for (ArrayList<Double> histStats : stageQueryHist.get(stage).values()) {
+                            queuingTime += histStats.get(0);
+                            servingTime += histStats.get(1);
+                            latency += histStats.get(0) + histStats.get(1);
+                        }
+                        stageCSVEntry.add("" + ADJUST_ROUND);
+                        stageCSVEntry.add("" + stage);
+                        stageCSVEntry.add("" + queuingTime);
+                        stageCSVEntry.add("" + servingTime);
+                        stageCSVEntry.add("" + latency);
                     }
-                    performMulage(totalLatency / finishedQueueSize, percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
-                    for (String serviceType : stageRatioMap.keySet()) {
-                        stageRatioMap.get(serviceType).clear();
+
+                    stageLatencyWriter.writeNext(stageCSVEntry.toArray(new String[stageCSVEntry.size()]));
+                    queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                    try {
+                        queryLatencyWriter.flush();
+                        stageLatencyWriter.flush();
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
-                    Thread.sleep(ADJUST_BUDGET_INTERVAL);
+                    for (String stage : stageQoSRatio.keySet()) {
+                        stageQoSRatio.put(stage, stageQoSRatio.get(stage) / totalLatency * QoSTarget);
+                    }
+                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
+                        performMulage(totalLatency / finishedQueueSize, percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
+                    } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST)) {
+                        performPegasus();
+                    }
+                    // clear up the data structure for next adjustment
+                    for (String serviceType : stageQueryHist.keySet()) {
+                        stageQueryHist.get(serviceType).clear();
+                    }
+                    for (String stage : stageQoSRatio.keySet()) {
+                        stageQoSRatio.put(stage, 0.0);
+                    }
+                    end2endQueryLatency.clear();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -506,7 +578,7 @@ public class CommandCenter implements SchedulerService.Iface {
             // shutdown the service instance and relinquish the gobal power budget
 
             List<ServiceInstance> serviceInstanceList = serviceMap.get(instance.getServiceType());
-            double allocatedFreq = instance.getCurrentFrequncy();
+            // double allocatedFreq = instance.getCurrentFrequncy();
             serviceInstanceList.remove(instance);
             double incrementalProb = instance.getLoadProb() / serviceInstanceList.size();
             for (int i = 0; i < serviceInstanceList.size(); i++) {
@@ -525,73 +597,72 @@ public class CommandCenter implements SchedulerService.Iface {
             // instance.setQueriesBetweenWithdraw(0);
             instance.setQueriesBetweenAdjust(0);
             candidateMap.get(instance.getServiceType()).add(instance);
-            LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " and the power reduction is " + PowerModel.getPowerPerFreq(allocatedFreq));
-            LOG.info("the current global power budget is " + POWER_BUDGET.get().doubleValue());
+            LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
+            // LOG.info("the current global power consumption is " + POWER_BUDGET.get().doubleValue());
             LOG.info("==================================================");
         }
 
         /**
          * This method re-implements the pegasus paper control logic
          */
-        private void performPegasus(long finishedQueryNum) {
-            if (waitRound == 0) {
-                long instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
-                long avgLatency = 0;
-                if (finishedQueryNum >= ADJUST_BUDGET_INTERVAL) {
-                    int start_index = end2endQueryLatency.size() - ADJUST_BUDGET_INTERVAL;
-                    long totalLatency = 0;
-                    for (int i = start_index; i < end2endQueryLatency.size(); i++) {
-                        totalLatency += end2endQueryLatency.get(i);
-                    }
-                    avgLatency = totalLatency / ADJUST_BUDGET_INTERVAL;
+        private void performPegasus() {
+            if (end2endQueryLatency.size() != 0) {
+                double instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
+                double avgLatency = 0;
+                for (double end2endLatency : end2endQueryLatency) {
+                    avgLatency += end2endLatency;
                 }
-                double powerTarget = 0;
-                if (avgLatency > qosTarget) {
-                    // max power, wait 10 round
-                    powerTarget = MAX_PACKAGE_POWER;
-                    waitRound = 10;
-                } else if (instantaneousLatency > 1.35 * qosTarget) {
-                    // max power
-                    powerTarget = MAX_PACKAGE_POWER;
-                } else if (instantaneousLatency > qosTarget) {
-                    // increase power by 7%
-                    powerTarget = currentPackagePower * 1.07;
-                    if (powerTarget > MAX_PACKAGE_POWER) {
+                avgLatency = avgLatency / end2endQueryLatency.size();
+                if (waitRound == 0) {
+                    double powerTarget = 0;
+                    if (Double.compare(avgLatency, QoSTarget) > 0) {
+                        // max power, wait 10 round
                         powerTarget = MAX_PACKAGE_POWER;
+                        waitRound = 10;
+                    } else if (Double.compare(instantaneousLatency, 1.35 * QoSTarget) > 0) {
+                        // max power
+                        powerTarget = MAX_PACKAGE_POWER;
+                    } else if (Double.compare(instantaneousLatency, QoSTarget) > 0) {
+                        // increase power by 7%
+                        powerTarget = currentPackagePower * 1.07;
+                        if (powerTarget > MAX_PACKAGE_POWER) {
+                            powerTarget = MAX_PACKAGE_POWER;
+                        }
+                    } else if (Double.compare(0.85 * QoSTarget, instantaneousLatency) <= 0 && Double.compare(instantaneousLatency, QoSTarget) <= 0) {
+                        // keep current power
+                        powerTarget = currentPackagePower;
+                    } else if (Double.compare(instantaneousLatency, 0.85 * QoSTarget) < 0) {
+                        // lower power by 1%
+                        powerTarget = currentPackagePower * 0.99;
+                    } else if (Double.compare(instantaneousLatency, 0.6 * QoSTarget) < 0) {
+                        // lower power by 3%
+                        powerTarget = currentPackagePower * 0.97;
                     }
-                } else if (0.85 * qosTarget <= instantaneousLatency && instantaneousLatency <= qosTarget) {
-                    // keep current power
-                    powerTarget = currentPackagePower;
-                } else if (instantaneousLatency < 0.85 * qosTarget) {
-                    // lower power by 1%
-                    powerTarget = currentPackagePower * 0.99;
-                } else if (instantaneousLatency < 0.6 * qosTarget) {
-                    // lower power by 3%
-                    powerTarget = currentPackagePower * 0.97;
+                    if (Double.compare(powerTarget, ((40 + 5) / 0.125)) < 0) {
+                        powerTarget = (40 + 5) / 0.125;
+                    }
+                    currentPackagePower = powerTarget;
+                    // enforce the power target
+                    String command = "sudo ./writeRAPL " + Math.round(powerTarget);
+                    execSystemCommand(command);
+                } else {
+                    waitRound--;
                 }
-                if (powerTarget < ((40 + 5) / 0.125)) {
-                    powerTarget = (40 + 5) / 0.125;
+                ArrayList<String> csvEntry = new ArrayList<String>();
+                csvEntry.add("" + ADJUST_ROUND);
+                csvEntry.add("" + avgLatency);
+                csvEntry.add("" + (currentPackagePower * 0.125 - 40));
+                pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                try {
+                    pegasusPowerWriter.flush();
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
-                currentPackagePower = powerTarget;
-                // enforce the power target
-                String command = "sudo ./writeRAPL " + Math.round(powerTarget);
-                execSystemCommand(command);
+                LOG.info("change the pp0 power to " + currentPackagePower + "watts");
             } else {
-                waitRound--;
+                LOG.info("no query has been returned in the previous interval");
             }
-            long currentTime = System.currentTimeMillis();
-            ArrayList<String> csvEntry = new ArrayList<String>();
-            csvEntry.add("" + finishedQueryNum);
-            csvEntry.add("" + (currentTime - initialPegasusTimestamp));
-            csvEntry.add("" + (currentPackagePower * 0.125 - 40));
-            pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-            try {
-                pegasusPowerWriter.flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            initialPegasusTimestamp = currentTime;
-            LOG.info("change the pp0 power to " + currentPackagePower + "watts");
+            ADJUST_ROUND++;
         }
 
         /**
@@ -604,23 +675,22 @@ public class CommandCenter implements SchedulerService.Iface {
          * debug log format: serviceLatencyWriter
          * (adjust round, instance_id, current_frequency, query_latency)
          * <p/>
-         * result log format: latencyWriter
+         * result log format: queryLatencyWriter
          * (adjust_round, measured_latency, percentile_latency, power_consumption)
          *
          * @param measuredLatency measured average latency during the moving window
          * @param percentile      percentile latency durin the past adjust interval
          */
-        private void performMulage(long measuredLatency, double percentile) {
+        private void performMulage(double measuredLatency, double percentile) {
             LOG.info("==================================================");
             LOG.info("adjust the power budget...");
             LOG.info("ranking the service instance based on the estimated delay((avg_queuing_time + avg_serving_time)*queue_length)");
-            ADAPTIVE_ADJUST_ROUND++;
             List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
-            double currentPowerConsumption = 0;
+            // double currentPowerConsumption = 0;
             for (String serviceType : serviceMap.keySet()) {
                 for (ServiceInstance instance : serviceMap.get(serviceType)) {
-                    double estimatedLatency = 0;
-                    currentPowerConsumption += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
+                    // double estimatedLatency = 0;
+                    // currentPowerConsumption += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
                     if (instance.getQueuing_latency().size() != 0) {
                         int start_index = instance.getServing_latency().size() - instance.getQueriesBetweenAdjust();
                         //LOG.info("start index of the query list " + start_index);
@@ -674,31 +744,33 @@ public class CommandCenter implements SchedulerService.Iface {
                         LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries after it is started");
                     }
                     ArrayList<String> csvEntry = new ArrayList<String>();
-                    csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
+                    csvEntry.add("" + ADJUST_ROUND);
                     csvEntry.add(instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort());
                     csvEntry.add("" + instance.getCurrentFrequncy());
-                    csvEntry.add("" + (instance.getServingTimeAvg() + instance.getQueuingTimeAvg()));
-                    serviceLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                    // csvEntry.add("" + (instance.getServingTimeAvg() + instance.getQueuingTimeAvg()));
+                    powerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                     try {
-                        serviceLatencyWriter.flush();
+                        powerWriter.flush();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
                 serviceInstanceList.addAll(serviceMap.get(serviceType));
             }
+            /*
             ArrayList<String> csvEntry = new ArrayList<String>();
-            csvEntry.add("" + ADAPTIVE_ADJUST_ROUND);
+            csvEntry.add("" + ADJUST_ROUND);
             csvEntry.add("" + measuredLatency);
             csvEntry.add("" + percentile);
             csvEntry.add("" + currentPowerConsumption);
-            latencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+            queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
             try {
-                latencyWriter.flush();
+                queryLatencyWriter.flush();
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            LOG.info("adjust round " + ADAPTIVE_ADJUST_ROUND + ":" + " the measured avgerage and percentile latency is " + measuredLatency + " and " + percentile);
+            */
+            LOG.info("adjust round " + ADJUST_ROUND + ":" + " the measured avgerage and percentile latency is " + measuredLatency + " and " + percentile);
             LOG.info("==================================================");
             // sort the service instance based on the 99th queuing latency
             Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
@@ -716,9 +788,9 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info(freqList);
             LOG.info(loadProb);
 
-            LOG.info("measured latency QoS is " + measuredLatency + " and the stable range is " + midThreshold * qosTarget + " <= Measured QoS <= " + qosTarget);
+            LOG.info("measured latency QoS is " + measuredLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
-            if (Double.compare(measuredLatency, qosTarget) > 0) {
+            if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 LOG.info("the QoS is violated, increase the power consumption of the slowest stage");
                 ServiceInstance slowestInstance = serviceInstanceList.get(0);
                 BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
@@ -744,15 +816,16 @@ public class CommandCenter implements SchedulerService.Iface {
                         LOG.info("node manager has ran out of service instances, skip current adjustment");
                     }
                 }
-            } else if (Double.compare(measuredLatency, qosTarget) <= 0 && Double.compare(measuredLatency, midThreshold * qosTarget) >= 0) {
+            } else if (Double.compare(measuredLatency, QoSTarget) <= 0 && Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
                 // 2. QoS is within the stable range, leave it without further actions
                 LOG.info("the QoS is within the stable range, skip current adjusting interval");
-            } else if (Double.compare(measuredLatency, midThreshold * qosTarget) < 0) {
+            } else if (Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
-                LOG.info("the QoS is overfitted, reduce the power consumption the fastest stage");
+                LOG.info("the QoS is overfitted, reduce the power consumption of the fastest stage");
                 powerConserve(serviceInstanceList);
             }
             LOG.info("==================================================");
+            ADJUST_ROUND++;
         }
 
         /**
@@ -762,7 +835,7 @@ public class CommandCenter implements SchedulerService.Iface {
          * @param measuredLatency
          * @return boosting decision (frequency boosting / instance boosting)
          */
-        private BoostDecision predictBoostDecision(ServiceInstance instance, long measuredLatency) {
+        private BoostDecision predictBoostDecision(ServiceInstance instance, double measuredLatency) {
             BoostDecision decision = new BoostDecision();
             Percentile percentile = new Percentile();
             double tailLatencyFreq = 0;
@@ -771,7 +844,8 @@ public class CommandCenter implements SchedulerService.Iface {
             double requiredPowerFreq = 0;
             double speedup = 0;
 
-            double stageQoSTarget = (stageRatioMap.get(instance.getServiceType()).get(0) + stageRatioMap.get(instance.getServiceType()).get(1)) * 1.0 / measuredLatency * qosTarget;
+            double stageQoSTarget = stageQoSRatio.get(instance.getServiceType());
+
             int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy());
             // already reach the max frequency, launch a new instance
             if (originIndex == freqRangeList.size() - 1) {
@@ -857,13 +931,16 @@ public class CommandCenter implements SchedulerService.Iface {
          *
          * @param serviceInstanceList
          */
-        private boolean powerConserve(List<ServiceInstance> serviceInstanceList) {
-            boolean success = false;
+        private void powerConserve(List<ServiceInstance> serviceInstanceList) {
             LOG.info("==================================================");
             LOG.info("start to reduce the power consumption...");
             if (serviceInstanceList.size() != 0) {
                 List<ServiceInstance> instanceWithdraw = new LinkedList<ServiceInstance>();
                 List<ServiceInstance> instanceReduceFreq = new LinkedList<ServiceInstance>();
+                List<Integer> freqTarget = new LinkedList<Integer>();
+                for (String stage : stageQoSRatio.keySet()) {
+                    LOG.info("stage: " + stage + " with QoS budget of " + stageQoSRatio.get(stage));
+                }
                 // 1. iterate through the service instances (from fastest to slowest)
                 // 2. if instance is already running at slowest frequency
                 // 2.1 if instance is not the only instance within its stage
@@ -872,8 +949,18 @@ public class CommandCenter implements SchedulerService.Iface {
                 for (ServiceInstance instance : serviceInstanceList) {
                     if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0) {
                         if (serviceMap.get(instance.getServiceType()).size() > 1) {
-                            if (true) {
-
+                            double stageLatency = 0;
+                            for (ServiceInstance histInstance : stageQueryHist.get(instance.getServiceType()).keySet()) {
+                                if (histInstance.equals(instance)) {
+                                    stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) * 2.0 + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                                } else {
+                                    stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                                }
+                            }
+                            if (stageLatency < stageQoSRatio.get(instance.getServiceType())) {
+                                instanceWithdraw.add(instance);
+                                double oldValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
+                                stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldValue * 2.0);
                             } else {
                                 continue;
                             }
@@ -883,17 +970,129 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                     } else {
                         // reduce the frequency of the instance without violating the QoS
-
+                        int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1;
+                        for (; originIndex > -1; originIndex--) {
+                            double stageLatency = 0;
+                            double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
+                            for (ServiceInstance histInstance : stageQueryHist.get(instance.getServiceType()).keySet()) {
+                                if (histInstance.equals(instance)) {
+                                    stageLatency += (stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1)) / (1 - speedup);
+                                } else {
+                                    stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                                }
+                            }
+                            if (stageLatency < stageQoSRatio.get(instance.getServiceType())) {
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                        if (originIndex != freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1) {
+                            if (originIndex < 0) {
+                                originIndex = 0;
+                            }
+                            instanceReduceFreq.add(instance);
+                            freqTarget.add(originIndex);
+                            double oldQueueValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
+                            double oldServiceValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(1);
+                            double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
+                            stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldQueueValue / (1 - speedup));
+                            stageQueryHist.get(instance.getServiceType()).get(instance).set(1, oldServiceValue / (1 - speedup));
+                        }
                     }
                 }
 
                 // perform the power conserve decisions
-
+                for (ServiceInstance instance : instanceWithdraw) {
+                    if (serviceMap.get(instance.getServiceType()).size() > 1) {
+                        withdrawServiceInstance(instance);
+                    }
+                }
+                LOG.info("==================================================");
+                LOG.info("start to reduce the frequency of service instances...");
+                for (int index = 0; index < instanceReduceFreq.size(); index++) {
+                    ServiceInstance instance = instanceReduceFreq.get(index);
+                    double oldFreq = instance.getCurrentFrequncy();
+                    instance.setCurrentFrequncy(freqRangeList.get(freqTarget.get(index)));
+                    try {
+                        TClient clientDelegate = new TClient();
+                        IPAService.Client client = clientDelegate.createIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
+                        client.updatBudget(freqRangeList.get(freqTarget.get(index)));
+                        clientDelegate.close();
+                        LOG.info("the frequency of service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " has been decreased from " + oldFreq + " ---> " + instance.getCurrentFrequncy() + "GHz");
+                    } catch (IOException ex) {
+                        ex.printStackTrace();
+                    } catch (TException ex) {
+                        ex.printStackTrace();
+                    }
+                }
             } else {
                 LOG.info("no service instance available to recycle");
             }
-            return success;
         }
+
+        /**
+         * Invoke the node manager service to launch new service instances.
+         *
+         * @param instance
+         */
+        private void launchServiceInstance(ServiceInstance instance, double decidedFreq) {
+            double loadProb = instance.getLoadProb() / 2.0;
+            instance.setLoadProb(loadProb);
+            String serviceType = instance.getServiceType();
+            if (candidateMap.get(serviceType).size() != 0) {
+                List<ServiceInstance> instanceList = candidateMap.get(serviceType);
+                ServiceInstance candidateInstance = instanceList.get(0);
+                candidateInstance.setServiceType(serviceType);
+                candidateInstance.setCurrentFrequncy(decidedFreq);
+                candidateInstance.setLoadProb(loadProb);
+                instanceList.remove(0);
+                candidateInstance.setRenewTimestamp(System.currentTimeMillis());
+                serviceMap.get(serviceType).add(candidateInstance);
+                int stealedQueries = 0;
+                try {
+                    TClient clientDelegate = new TClient();
+                    IPAService.Client client = clientDelegate.createIPAClient(candidateInstance.getHostPort().getIp(), candidateInstance.getHostPort().getPort());
+                    client.updatBudget(candidateInstance.getCurrentFrequncy());
+                    stealedQueries = client.stealParentInstance(instance.getHostPort());
+                    clientDelegate.close();
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                } catch (TException ex) {
+                    ex.printStackTrace();
+                }
+                LOG.info("launching new service instance " + serviceType + " on " + candidateInstance.getHostPort().getIp() + ":" + candidateInstance.getHostPort().getPort() + " with frequency " + candidateInstance.getCurrentFrequncy() + "GHz");
+                LOG.info("stealed " + stealedQueries + " queries from parent service " + serviceType + " running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
+                LOG.info("updating the load probability of the parent service instance to " + loadProb);
+            } else {
+                LOG.info("The node manager has run out of service instance " + serviceType);
+            }
+        }
+
+        private String execSystemCommand(String command) {
+            String result = null;
+            try {
+                Process p = Runtime.getRuntime().exec(command);
+                BufferedReader stdInput = new BufferedReader(new
+                        InputStreamReader(p.getInputStream()));
+
+                BufferedReader stdError = new BufferedReader(new
+                        InputStreamReader(p.getErrorStream()));
+                while ((result = stdInput.readLine()) != null) {
+                    LOG.info(result);
+                }
+                while ((result = stdError.readLine()) != null) {
+                    LOG.error(result);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return result;
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////
+        // not used
+        ///////////////////////////////////////////////////////////////////////////////////////////
 
         /**
          * Recursively relocating the power budget across the service instances.
@@ -901,6 +1100,7 @@ public class CommandCenter implements SchedulerService.Iface {
          * @param serviceInstanceList
          * @param requiredPower
          */
+        /*
         private boolean adjustFrequency(List<ServiceInstance> serviceInstanceList, double requiredPower) {
             boolean success = false;
             LOG.info("==================================================");
@@ -974,69 +1174,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             return success;
         }
-
-        /**
-         * Invoke the node manager service to launch new service instances.
-         *
-         * @param instance
-         */
-        private void launchServiceInstance(ServiceInstance instance, double decidedFreq) {
-            double loadProb = instance.getLoadProb() / 2.0;
-            instance.setLoadProb(loadProb);
-            String serviceType = instance.getServiceType();
-            if (candidateMap.get(serviceType).size() != 0) {
-                List<ServiceInstance> instanceList = candidateMap.get(serviceType);
-                ServiceInstance candidateInstance = instanceList.get(0);
-                candidateInstance.setServiceType(serviceType);
-                candidateInstance.setCurrentFrequncy(decidedFreq);
-                candidateInstance.setLoadProb(loadProb);
-                instanceList.remove(0);
-                candidateInstance.setRenewTimestamp(System.currentTimeMillis());
-                serviceMap.get(serviceType).add(candidateInstance);
-                int stealedQueries = 0;
-                try {
-                    TClient clientDelegate = new TClient();
-                    IPAService.Client client = clientDelegate.createIPAClient(candidateInstance.getHostPort().getIp(), candidateInstance.getHostPort().getPort());
-                    client.updatBudget(candidateInstance.getCurrentFrequncy());
-                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
-                        stealedQueries = client.stealParentInstance(instance.getHostPort());
-                    }
-                    clientDelegate.close();
-                } catch (IOException ex) {
-                    ex.printStackTrace();
-                } catch (TException ex) {
-                    ex.printStackTrace();
-                }
-                LOG.info("launching new service instance " + serviceType + " on " + candidateInstance.getHostPort().getIp() + ":" + candidateInstance.getHostPort().getPort() + " with frequency " + candidateInstance.getCurrentFrequncy() + "GHz");
-                if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
-                    LOG.info("stealed " + stealedQueries + " queries from parent service " + serviceType + " running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
-                }
-                LOG.info("updating the load probability of the parent service instance to " + loadProb);
-            } else {
-                LOG.info("The node manager has run out of service instance " + serviceType);
-            }
-        }
-
-        private String execSystemCommand(String command) {
-            String result = null;
-            try {
-                Process p = Runtime.getRuntime().exec(command);
-                BufferedReader stdInput = new BufferedReader(new
-                        InputStreamReader(p.getInputStream()));
-
-                BufferedReader stdError = new BufferedReader(new
-                        InputStreamReader(p.getErrorStream()));
-                while ((result = stdInput.readLine()) != null) {
-                    LOG.info(result);
-                }
-                while ((result = stdError.readLine()) != null) {
-                    LOG.error(result);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return result;
-        }
+        */
 
         /**
          *
@@ -1077,6 +1215,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             LOG.info("==================================================");
         }
+
     }
 
     /**
