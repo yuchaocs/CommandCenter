@@ -128,7 +128,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LATENCY_PERCENTILE = Double.valueOf(args[5]);
             if (args[7].equalsIgnoreCase("vanilla")) {
                 VANILLA_MODE = true;
-            } else if (args[7].equalsIgnoreCase("recycle")) {
+            } else if (args[7].equalsIgnoreCase("mulage")) {
                 VANILLA_MODE = false;
             }
             BOOSTING_DECISION = args[8];
