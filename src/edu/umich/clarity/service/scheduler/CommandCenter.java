@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CommandCenter implements SchedulerService.Iface {
 
+    public static final DecimalFormat dFormat = new DecimalFormat("#.##");
+
     public static final String LATENCY_TYPE = "average";
     // save for future use
     // private static final String NODE_MANAGER_IP = "clarity28.eecs.umich.edu";
@@ -34,7 +36,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // headers for the CSV result files
     private static final String[] QUERY_LATENCY_FILE_HEADER = {"adjust_id", "total_queuing", "total_serving", "total_latency", "percentile_latency", "global_power"};
     private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance"};
-    private static final String[] POWER_FILE_HEADER = {"adjust_id", "service_instance", "frequency", "power"};
+    private static final String[] POWER_FILE_HEADER = {"adjust_id", "service_stage", "service_instance", "frequency", "power"};
     private static final String[] STAGE_LATENCY_FILE_HEADER = {"adjust_id", "stage_name", "total_queuing", "total_serving", "total_latency"};
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "elapse_time", "package_power"};
 
@@ -508,35 +510,43 @@ public class CommandCenter implements SchedulerService.Iface {
 
                         ArrayList<String> csvEntry = new ArrayList<String>();
                         ArrayList<String> stageCSVEntry = new ArrayList<String>();
+                        ArrayList<String> powerCSVEntry = new ArrayList<String>();
 
                         csvEntry.add("" + ADJUST_ROUND);
-                        csvEntry.add("" + (totalQueuingTime / finishedQueueSize));
-                        csvEntry.add("" + (totalServingTime / finishedQueueSize));
-                        csvEntry.add("" + (totalLatency / finishedQueueSize));
-                        csvEntry.add("" + percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
-                        csvEntry.add("" + GLOBAL_POWER_CONSUMPTION);
+                        csvEntry.add("" + dFormat.format((totalQueuingTime / finishedQueueSize)));
+                        csvEntry.add("" + dFormat.format((totalServingTime / finishedQueueSize)));
+                        csvEntry.add("" + dFormat.format((totalLatency / finishedQueueSize)));
+                        csvEntry.add("" + dFormat.format(percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE)));
+                        csvEntry.add("" + dFormat.format(GLOBAL_POWER_CONSUMPTION));
 
                         for (String stage : stageQueryHist.keySet()) {
                             double queuingTime = 0;
                             double servingTime = 0;
                             double latency = 0;
-                            for (ArrayList<Double> histStats : stageQueryHist.get(stage).values()) {
+                            for (ServiceInstance histInstance : stageQueryHist.get(stage).keySet()) {
+                                ArrayList<Double> histStats = stageQueryHist.get(stage).get(histInstance);
                                 queuingTime += histStats.get(0);
                                 servingTime += histStats.get(1);
                                 latency += histStats.get(0) + histStats.get(1);
+                                powerCSVEntry.add("" + ADJUST_ROUND);
+                                powerCSVEntry.add("" + stage);
+                                powerCSVEntry.add("" + histInstance.getServiceType() + "_" + histInstance.getHostPort().getIp() + "_" + histInstance.getHostPort().getPort());
+                                powerCSVEntry.add("" + histInstance.getCurrentFrequncy());
+                                powerCSVEntry.add("" + dFormat.format(PowerModel.getPowerPerFreq(histInstance.getCurrentFrequncy())));
                             }
                             stageCSVEntry.add("" + ADJUST_ROUND);
                             stageCSVEntry.add("" + stage);
-                            stageCSVEntry.add("" + queuingTime);
-                            stageCSVEntry.add("" + servingTime);
-                            stageCSVEntry.add("" + latency);
+                            stageCSVEntry.add("" + dFormat.format(queuingTime));
+                            stageCSVEntry.add("" + dFormat.format(servingTime));
+                            stageCSVEntry.add("" + dFormat.format(latency));
                         }
-
                         stageLatencyWriter.writeNext(stageCSVEntry.toArray(new String[stageCSVEntry.size()]));
                         queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                        powerWriter.writeNext(powerCSVEntry.toArray(new String[powerCSVEntry.size()]));
                         try {
                             queryLatencyWriter.flush();
                             stageLatencyWriter.flush();
+                            powerWriter.flush();
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -547,6 +557,8 @@ public class CommandCenter implements SchedulerService.Iface {
                             performMulage(totalLatency / finishedQueueSize, percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
                         } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST)) {
                             performPegasus();
+                        } else {
+                            ADJUST_ROUND++;
                         }
                         // calculate the global power consumption
                         GLOBAL_POWER_CONSUMPTION = 0;
@@ -567,11 +579,11 @@ public class CommandCenter implements SchedulerService.Iface {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                }else{
+                } else {
                     LOG.info("warming up the application before entering the management mode");
                     try {
                         Thread.sleep(ADJUST_QOS_INTERVAL * 2);
-                    }catch (InterruptedException e){
+                    } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
                 }
@@ -761,17 +773,6 @@ public class CommandCenter implements SchedulerService.Iface {
                         // instance.setServingTimePercentile(0);
                         // instance.setQueuingTimePercentile(0);
                         LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries after it is started");
-                    }
-                    ArrayList<String> csvEntry = new ArrayList<String>();
-                    csvEntry.add("" + ADJUST_ROUND);
-                    csvEntry.add(instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort());
-                    csvEntry.add("" + instance.getCurrentFrequncy());
-                    // csvEntry.add("" + (instance.getServingTimeAvg() + instance.getQueuingTimeAvg()));
-                    powerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                    try {
-                        powerWriter.flush();
-                    } catch (IOException e) {
-                        e.printStackTrace();
                     }
                 }
                 serviceInstanceList.addAll(serviceMap.get(serviceType));
