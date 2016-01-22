@@ -465,130 +465,132 @@ public class CommandCenter implements SchedulerService.Iface {
                         // long totalLatency = 0;
                         int finishedQueueSize = finishedQueryQueue.size();
                         LOG.info("" + finishedQueueSize + " responses have been received during the past interval");
-                        double totalLatency = 0;
-                        double totalQueuingTime = 0;
-                        double totalServingTime = 0;
-                        Percentile percentile = new Percentile();
-                        double[] queryDelayArray = new double[finishedQueueSize];
-                        for (int queryNum = 0; queryNum < finishedQueueSize; queryNum++) {
-                            QuerySpec query = finishedQueryQueue.take();
-                            double tempLatency = totalLatency;
-                            for (int i = 0; i < query.getTimestamp().size(); i++) {
-                                LatencySpec latencySpec = query.getTimestamp().get(i);
-                                double queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
-                                double serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
-                                totalLatency += queuing_time + serving_time;
-                                totalQueuingTime += queuing_time;
-                                totalServingTime += serving_time;
-                                String serviceType = latencySpec.getInstance_id().split("_")[0];
-                                String host = latencySpec.getInstance_id().split("_")[1];
-                                String port = latencySpec.getInstance_id().split("_")[2];
-                                for (ServiceInstance instance : serviceMap.get(serviceType)) {
-                                    String instanceIp = instance.getHostPort().getIp();
-                                    int instancePort = instance.getHostPort().getPort();
-                                    if (instanceIp.equalsIgnoreCase(host) && instancePort == new Integer(port).intValue()) {
-                                        instance.getServing_latency().add(serving_time);
-                                        instance.getQueuing_latency().add(queuing_time);
-                                        // instance.setQueriesBetweenWithdraw(instance.getQueriesBetweenWithdraw() + 1);
-                                        instance.setQueriesBetweenAdjust(instance.getQueriesBetweenAdjust() + 1);
-                                        double histStageLatency = stageQoSRatio.get(instance.getServiceType());
-                                        stageQoSRatio.put(instance.getServiceType(), histStageLatency + serving_time + queuing_time);
-                                        if (stageQueryHist.get(serviceType).get(instance) == null) {
-                                            ArrayList<Double> queryLatency = new ArrayList<Double>();
-                                            queryLatency.add(queuing_time / finishedQueueSize);
-                                            queryLatency.add(serving_time / finishedQueueSize);
-                                            stageQueryHist.get(serviceType).put(instance, queryLatency);
-                                        } else {
-                                            if (stageQueryHist.get(serviceType).get(instance).size() == 0) {
-                                                stageQueryHist.get(serviceType).get(instance).add(queuing_time / finishedQueueSize);
-                                                stageQueryHist.get(serviceType).get(instance).add(serving_time / finishedQueueSize);
+                        if (finishedQueueSize > 0) {
+                            double totalLatency = 0;
+                            double totalQueuingTime = 0;
+                            double totalServingTime = 0;
+                            Percentile percentile = new Percentile();
+                            double[] queryDelayArray = new double[finishedQueueSize];
+                            for (int queryNum = 0; queryNum < finishedQueueSize; queryNum++) {
+                                QuerySpec query = finishedQueryQueue.take();
+                                double tempLatency = totalLatency;
+                                for (int i = 0; i < query.getTimestamp().size(); i++) {
+                                    LatencySpec latencySpec = query.getTimestamp().get(i);
+                                    double queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
+                                    double serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
+                                    totalLatency += queuing_time + serving_time;
+                                    totalQueuingTime += queuing_time;
+                                    totalServingTime += serving_time;
+                                    String serviceType = latencySpec.getInstance_id().split("_")[0];
+                                    String host = latencySpec.getInstance_id().split("_")[1];
+                                    String port = latencySpec.getInstance_id().split("_")[2];
+                                    for (ServiceInstance instance : serviceMap.get(serviceType)) {
+                                        String instanceIp = instance.getHostPort().getIp();
+                                        int instancePort = instance.getHostPort().getPort();
+                                        if (instanceIp.equalsIgnoreCase(host) && instancePort == new Integer(port).intValue()) {
+                                            instance.getServing_latency().add(serving_time);
+                                            instance.getQueuing_latency().add(queuing_time);
+                                            // instance.setQueriesBetweenWithdraw(instance.getQueriesBetweenWithdraw() + 1);
+                                            instance.setQueriesBetweenAdjust(instance.getQueriesBetweenAdjust() + 1);
+                                            double histStageLatency = stageQoSRatio.get(instance.getServiceType());
+                                            stageQoSRatio.put(instance.getServiceType(), histStageLatency + serving_time + queuing_time);
+                                            if (stageQueryHist.get(serviceType).get(instance) == null) {
+                                                ArrayList<Double> queryLatency = new ArrayList<Double>();
+                                                queryLatency.add(queuing_time / finishedQueueSize);
+                                                queryLatency.add(serving_time / finishedQueueSize);
+                                                stageQueryHist.get(serviceType).put(instance, queryLatency);
                                             } else {
-                                                double historyQueueLatency = stageQueryHist.get(serviceType).get(instance).get(0);
-                                                double historyServiceLatency = stageQueryHist.get(serviceType).get(instance).get(1);
-                                                stageQueryHist.get(serviceType).get(instance).set(0, historyQueueLatency + queuing_time / finishedQueueSize);
-                                                stageQueryHist.get(serviceType).get(instance).set(1, historyServiceLatency + serving_time / finishedQueueSize);
+                                                if (stageQueryHist.get(serviceType).get(instance).size() == 0) {
+                                                    stageQueryHist.get(serviceType).get(instance).add(queuing_time / finishedQueueSize);
+                                                    stageQueryHist.get(serviceType).get(instance).add(serving_time / finishedQueueSize);
+                                                } else {
+                                                    double historyQueueLatency = stageQueryHist.get(serviceType).get(instance).get(0);
+                                                    double historyServiceLatency = stageQueryHist.get(serviceType).get(instance).get(1);
+                                                    stageQueryHist.get(serviceType).get(instance).set(0, historyQueueLatency + queuing_time / finishedQueueSize);
+                                                    stageQueryHist.get(serviceType).get(instance).set(1, historyServiceLatency + serving_time / finishedQueueSize);
+                                                }
                                             }
                                         }
                                     }
                                 }
+                                queryDelayArray[queryNum] = totalLatency - tempLatency;
+                                processedResponses++;
                             }
-                            queryDelayArray[queryNum] = totalLatency - tempLatency;
-                        }
-                        if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
-                            end2endQueryLatency.add(totalLatency);
+                            if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
+                                end2endQueryLatency.add(totalLatency);
 
-                        ArrayList<String> csvEntry = new ArrayList<String>();
-                        csvEntry.add("" + ADJUST_ROUND);
-                        csvEntry.add("" + dFormat.format((totalQueuingTime / finishedQueueSize)));
-                        csvEntry.add("" + dFormat.format((totalServingTime / finishedQueueSize)));
-                        csvEntry.add("" + dFormat.format((totalLatency / finishedQueueSize)));
-                        csvEntry.add("" + dFormat.format(percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE)));
-                        csvEntry.add("" + dFormat.format(GLOBAL_POWER_CONSUMPTION));
-                        queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+                            ArrayList<String> csvEntry = new ArrayList<String>();
+                            csvEntry.add("" + ADJUST_ROUND);
+                            csvEntry.add("" + dFormat.format((totalQueuingTime / finishedQueueSize)));
+                            csvEntry.add("" + dFormat.format((totalServingTime / finishedQueueSize)));
+                            csvEntry.add("" + dFormat.format((totalLatency / finishedQueueSize)));
+                            csvEntry.add("" + dFormat.format(percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE)));
+                            csvEntry.add("" + dFormat.format(GLOBAL_POWER_CONSUMPTION));
+                            queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
 
-                        for (String stage : stageQueryHist.keySet()) {
-                            ArrayList<String> stageCSVEntry = new ArrayList<String>();
-                            double queuingTime = 0;
-                            double servingTime = 0;
-                            double latency = 0;
-                            for (ServiceInstance histInstance : stageQueryHist.get(stage).keySet()) {
-                                ArrayList<String> powerCSVEntry = new ArrayList<String>();
-                                ArrayList<Double> histStats = stageQueryHist.get(stage).get(histInstance);
-                                queuingTime += histStats.get(0);
-                                servingTime += histStats.get(1);
-                                latency += histStats.get(0) + histStats.get(1);
-                                powerCSVEntry.add("" + ADJUST_ROUND);
-                                powerCSVEntry.add("" + stage);
-                                powerCSVEntry.add("" + histInstance.getServiceType() + "_" + histInstance.getHostPort().getIp() + "_" + histInstance.getHostPort().getPort());
-                                powerCSVEntry.add("" + histInstance.getCurrentFrequncy());
-                                powerCSVEntry.add("" + dFormat.format(PowerModel.getPowerPerFreq(histInstance.getCurrentFrequncy())));
-                                powerWriter.writeNext(powerCSVEntry.toArray(new String[powerCSVEntry.size()]));
+                            for (String stage : stageQueryHist.keySet()) {
+                                ArrayList<String> stageCSVEntry = new ArrayList<String>();
+                                double queuingTime = 0;
+                                double servingTime = 0;
+                                double latency = 0;
+                                for (ServiceInstance histInstance : stageQueryHist.get(stage).keySet()) {
+                                    ArrayList<String> powerCSVEntry = new ArrayList<String>();
+                                    ArrayList<Double> histStats = stageQueryHist.get(stage).get(histInstance);
+                                    queuingTime += histStats.get(0);
+                                    servingTime += histStats.get(1);
+                                    latency += histStats.get(0) + histStats.get(1);
+                                    powerCSVEntry.add("" + ADJUST_ROUND);
+                                    powerCSVEntry.add("" + stage);
+                                    powerCSVEntry.add("" + histInstance.getServiceType() + "_" + histInstance.getHostPort().getIp() + "_" + histInstance.getHostPort().getPort());
+                                    powerCSVEntry.add("" + histInstance.getCurrentFrequncy());
+                                    powerCSVEntry.add("" + dFormat.format(PowerModel.getPowerPerFreq(histInstance.getCurrentFrequncy())));
+                                    powerWriter.writeNext(powerCSVEntry.toArray(new String[powerCSVEntry.size()]));
+                                }
+                                stageCSVEntry.add("" + ADJUST_ROUND);
+                                stageCSVEntry.add("" + stage);
+                                stageCSVEntry.add("" + dFormat.format(queuingTime));
+                                stageCSVEntry.add("" + dFormat.format(servingTime));
+                                stageCSVEntry.add("" + dFormat.format(latency));
+                                stageLatencyWriter.writeNext(stageCSVEntry.toArray(new String[stageCSVEntry.size()]));
                             }
-                            stageCSVEntry.add("" + ADJUST_ROUND);
-                            stageCSVEntry.add("" + stage);
-                            stageCSVEntry.add("" + dFormat.format(queuingTime));
-                            stageCSVEntry.add("" + dFormat.format(servingTime));
-                            stageCSVEntry.add("" + dFormat.format(latency));
-                            stageLatencyWriter.writeNext(stageCSVEntry.toArray(new String[stageCSVEntry.size()]));
-                        }
 
-                        try {
-                            queryLatencyWriter.flush();
-                            stageLatencyWriter.flush();
-                            powerWriter.flush();
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                        for (String stage : stageQoSRatio.keySet()) {
-                            stageQoSRatio.put(stage, stageQoSRatio.get(stage) / totalLatency * QoSTarget);
-                        }
-                        if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
-                            performMulage(totalLatency / finishedQueueSize, percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
-                        } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST)) {
-                            performPegasus();
-                        } else {
-                            ADJUST_ROUND++;
-                        }
-                        // calculate the global power consumption
-                        GLOBAL_POWER_CONSUMPTION = 0;
-                        for (String stage : serviceMap.keySet()) {
-                            for (ServiceInstance instance : serviceMap.get(stage)) {
-                                GLOBAL_POWER_CONSUMPTION += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
+                            try {
+                                queryLatencyWriter.flush();
+                                stageLatencyWriter.flush();
+                                powerWriter.flush();
+                            } catch (IOException e) {
+                                e.printStackTrace();
                             }
+                            for (String stage : stageQoSRatio.keySet()) {
+                                stageQoSRatio.put(stage, stageQoSRatio.get(stage) / totalLatency * QoSTarget);
+                            }
+                            if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
+                                performMulage(totalLatency / finishedQueueSize, percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
+                            } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST)) {
+                                performPegasus();
+                            } else {
+                                ADJUST_ROUND++;
+                            }
+                            // calculate the global power consumption
+                            GLOBAL_POWER_CONSUMPTION = 0;
+                            for (String stage : serviceMap.keySet()) {
+                                for (ServiceInstance instance : serviceMap.get(stage)) {
+                                    GLOBAL_POWER_CONSUMPTION += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
+                                }
+                            }
+                            // clear up the data structure for next adjustment
+                            for (String serviceType : stageQueryHist.keySet()) {
+                                stageQueryHist.get(serviceType).clear();
+                            }
+                            for (String stage : stageQoSRatio.keySet()) {
+                                stageQoSRatio.put(stage, 0.0);
+                            }
+                            if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
+                                end2endQueryLatency.clear();
                         }
-                        // clear up the data structure for next adjustment
-                        for (String serviceType : stageQueryHist.keySet()) {
-                            stageQueryHist.get(serviceType).clear();
-                        }
-                        for (String stage : stageQoSRatio.keySet()) {
-                            stageQoSRatio.put(stage, 0.0);
-                        }
-                        if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
-                            end2endQueryLatency.clear();
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    processedResponses++;
                 } else {
                     LOG.info("warming up the application before entering the management mode");
                     try {
