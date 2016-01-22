@@ -32,9 +32,9 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final long LATENCY_BUDGET = 100;
     private static final List<String> sirius_workflow = new LinkedList<String>();
     // headers for the CSV result files
-    private static final String[] TOTAL_LATENCY_FILE_HEADER = {"adjust_id", "total_queuing", "total_serving", "total_latency", "percentile_latency", "global_power"};
+    private static final String[] QUERY_LATENCY_FILE_HEADER = {"adjust_id", "total_queuing", "total_serving", "total_latency", "percentile_latency", "global_power"};
     private static final String[] SERVICE_LATENCY_FILE_HEADER = {"query_id", "asr_queuing", "asr_serving", "asr_instance", "imm_queuing", "imm_serving", "imm_instance", "qa_queuing", "qa_serving", "qa_instance"};
-    private static final String[] FREQUENCY_FILE_HEADER = {"adjust_id", "service_instance", "frequency", "power"};
+    private static final String[] POWER_FILE_HEADER = {"adjust_id", "service_instance", "frequency", "power"};
     private static final String[] STAGE_LATENCY_FILE_HEADER = {"adjust_id", "stage_name", "total_queuing", "total_serving", "total_latency"};
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "elapse_time", "package_power"};
 
@@ -178,11 +178,11 @@ public class CommandCenter implements SchedulerService.Iface {
             serviceLatencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "service_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             powerWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "power.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
             stageLatencyWriter = new CSVWriter(new FileWriter(System.getProperty("user.dir") + File.separator + "stage_latency.csv"), ',', CSVWriter.NO_QUOTE_CHARACTER);
-            queryLatencyWriter.writeNext(TOTAL_LATENCY_FILE_HEADER);
+            queryLatencyWriter.writeNext(QUERY_LATENCY_FILE_HEADER);
             queryLatencyWriter.flush();
             serviceLatencyWriter.writeNext(SERVICE_LATENCY_FILE_HEADER);
             serviceLatencyWriter.flush();
-            powerWriter.writeNext(FREQUENCY_FILE_HEADER);
+            powerWriter.writeNext(POWER_FILE_HEADER);
             powerWriter.flush();
             stageLatencyWriter.writeNext(STAGE_LATENCY_FILE_HEADER);
             stageLatencyWriter.flush();
@@ -457,6 +457,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     Thread.sleep(ADJUST_QOS_INTERVAL);
                     // long totalLatency = 0;
                     int finishedQueueSize = finishedQueryQueue.size();
+                    LOG.info("" + finishedQueueSize + " responses have been received during the past interval");
                     double totalLatency = 0;
                     double totalQueuingTime = 0;
                     double totalServingTime = 0;
@@ -501,7 +502,8 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                         queryDelayArray[queryNum] = totalLatency - tempLatency;
                     }
-                    end2endQueryLatency.add(totalLatency);
+                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
+                        end2endQueryLatency.add(totalLatency);
 
                     ArrayList<String> csvEntry = new ArrayList<String>();
                     ArrayList<String> stageCSVEntry = new ArrayList<String>();
@@ -545,6 +547,13 @@ public class CommandCenter implements SchedulerService.Iface {
                     } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST)) {
                         performPegasus();
                     }
+                    // calculate the global power consumption
+                    GLOBAL_POWER_CONSUMPTION = 0;
+                    for (String stage : serviceMap.keySet()) {
+                        for (ServiceInstance instance : serviceMap.get(stage)) {
+                            GLOBAL_POWER_CONSUMPTION += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
+                        }
+                    }
                     // clear up the data structure for next adjustment
                     for (String serviceType : stageQueryHist.keySet()) {
                         stageQueryHist.get(serviceType).clear();
@@ -552,7 +561,8 @@ public class CommandCenter implements SchedulerService.Iface {
                     for (String stage : stageQoSRatio.keySet()) {
                         stageQoSRatio.put(stage, 0.0);
                     }
-                    end2endQueryLatency.clear();
+                    if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
+                        end2endQueryLatency.clear();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
