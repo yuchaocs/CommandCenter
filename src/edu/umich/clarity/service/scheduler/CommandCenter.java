@@ -489,8 +489,8 @@ public class CommandCenter implements SchedulerService.Iface {
                                         stageQoSRatio.put(instance.getServiceType(), histStageLatency + serving_time + queuing_time);
                                         if (stageQueryHist.get(serviceType).get(instance) == null) {
                                             ArrayList<Double> queryLatency = new ArrayList<Double>();
-                                            queryLatency.set(0, queuing_time / finishedQueueSize);
-                                            queryLatency.set(1, serving_time / finishedQueueSize);
+                                            queryLatency.add(queuing_time / finishedQueueSize);
+                                            queryLatency.add(serving_time / finishedQueueSize);
                                             stageQueryHist.get(serviceType).put(instance, queryLatency);
                                         } else {
                                             double historyQueueLatency = stageQueryHist.get(serviceType).get(instance).get(0);
