@@ -790,19 +790,6 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 serviceInstanceList.addAll(serviceMap.get(serviceType));
             }
-            /*
-            ArrayList<String> csvEntry = new ArrayList<String>();
-            csvEntry.add("" + ADJUST_ROUND);
-            csvEntry.add("" + measuredLatency);
-            csvEntry.add("" + percentile);
-            csvEntry.add("" + currentPowerConsumption);
-            queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-            try {
-                queryLatencyWriter.flush();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            */
             LOG.info("adjust round " + ADJUST_ROUND + ":" + " the measured avgerage and percentile latency is " + measuredLatency + " and " + percentile);
             LOG.info("==================================================");
             // sort the service instance based on the 99th queuing latency
@@ -990,7 +977,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                     stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
                                 }
                             }
-                            if (stageLatency < stageQoSRatio.get(instance.getServiceType())) {
+                            if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
                                 instanceWithdraw.add(instance);
                                 double oldValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
                                 stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldValue * 2.0);
@@ -1014,7 +1001,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                     stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
                                 }
                             }
-                            if (stageLatency < stageQoSRatio.get(instance.getServiceType())) {
+                            if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
                                 continue;
                             } else {
                                 break;
