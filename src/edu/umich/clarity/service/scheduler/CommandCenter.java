@@ -518,21 +518,21 @@ public class CommandCenter implements SchedulerService.Iface {
                             end2endQueryLatency.add(totalLatency);
 
                         ArrayList<String> csvEntry = new ArrayList<String>();
-                        ArrayList<String> stageCSVEntry = new ArrayList<String>();
-                        ArrayList<String> powerCSVEntry = new ArrayList<String>();
-
                         csvEntry.add("" + ADJUST_ROUND);
                         csvEntry.add("" + dFormat.format((totalQueuingTime / finishedQueueSize)));
                         csvEntry.add("" + dFormat.format((totalServingTime / finishedQueueSize)));
                         csvEntry.add("" + dFormat.format((totalLatency / finishedQueueSize)));
                         csvEntry.add("" + dFormat.format(percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE)));
                         csvEntry.add("" + dFormat.format(GLOBAL_POWER_CONSUMPTION));
+                        queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
 
                         for (String stage : stageQueryHist.keySet()) {
+                            ArrayList<String> stageCSVEntry = new ArrayList<String>();
                             double queuingTime = 0;
                             double servingTime = 0;
                             double latency = 0;
                             for (ServiceInstance histInstance : stageQueryHist.get(stage).keySet()) {
+                                ArrayList<String> powerCSVEntry = new ArrayList<String>();
                                 ArrayList<Double> histStats = stageQueryHist.get(stage).get(histInstance);
                                 queuingTime += histStats.get(0);
                                 servingTime += histStats.get(1);
@@ -549,9 +549,9 @@ public class CommandCenter implements SchedulerService.Iface {
                             stageCSVEntry.add("" + dFormat.format(queuingTime));
                             stageCSVEntry.add("" + dFormat.format(servingTime));
                             stageCSVEntry.add("" + dFormat.format(latency));
+                            stageLatencyWriter.writeNext(stageCSVEntry.toArray(new String[stageCSVEntry.size()]));
                         }
-                        stageLatencyWriter.writeNext(stageCSVEntry.toArray(new String[stageCSVEntry.size()]));
-                        queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
+
                         try {
                             queryLatencyWriter.flush();
                             stageLatencyWriter.flush();
