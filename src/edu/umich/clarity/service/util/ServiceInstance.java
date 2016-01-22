@@ -163,4 +163,9 @@ public class ServiceInstance {
         }
         return tags;
     }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(hostPort.getIp(), hostPort.getPort());
+    }
 }

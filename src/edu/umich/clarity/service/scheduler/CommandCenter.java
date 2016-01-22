@@ -413,9 +413,11 @@ public class CommandCenter implements SchedulerService.Iface {
                 serviceLatencyWriter.flush();
                 // queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 // queryLatencyWriter.flush();
+                /*
                 if (warmupCount.get() % 1000 == 0) {
-                    LOG.info("stop processing queries at " + System.currentTimeMillis());
+                     LOG.info("1000 responses have been received, ");
                 }
+                */
             }
             /*
             if (warmupCount.get() == WARMUP_COUNT) {
@@ -447,13 +449,15 @@ public class CommandCenter implements SchedulerService.Iface {
      *
      */
     private class powerBudgetAdjustRunnable implements Runnable {
+        private long processedResponses = 0;
+
         /**
          *
          */
         @Override
         public void run() {
             LOG.info("starting the helper thread for adjusting power budget across stages");
-            while (true) {
+            while (processedResponses < 1000) {
                 if (warmupCount.get() > WARMUP_COUNT) {
                     try {
                         LOG.info("sleep for " + ADJUST_QOS_INTERVAL + " ms before performing QoS management");
@@ -495,10 +499,15 @@ public class CommandCenter implements SchedulerService.Iface {
                                             queryLatency.add(serving_time / finishedQueueSize);
                                             stageQueryHist.get(serviceType).put(instance, queryLatency);
                                         } else {
-                                            double historyQueueLatency = stageQueryHist.get(serviceType).get(instance).get(0);
-                                            double historyServiceLatency = stageQueryHist.get(serviceType).get(instance).get(1);
-                                            stageQueryHist.get(serviceType).get(instance).set(0, historyQueueLatency + queuing_time / finishedQueueSize);
-                                            stageQueryHist.get(serviceType).get(instance).set(1, historyServiceLatency + serving_time / finishedQueueSize);
+                                            if (stageQueryHist.get(serviceType).get(instance).size() == 0) {
+                                                stageQueryHist.get(serviceType).get(instance).add(queuing_time / finishedQueueSize);
+                                                stageQueryHist.get(serviceType).get(instance).add(serving_time / finishedQueueSize);
+                                            } else {
+                                                double historyQueueLatency = stageQueryHist.get(serviceType).get(instance).get(0);
+                                                double historyServiceLatency = stageQueryHist.get(serviceType).get(instance).get(1);
+                                                stageQueryHist.get(serviceType).get(instance).set(0, historyQueueLatency + queuing_time / finishedQueueSize);
+                                                stageQueryHist.get(serviceType).get(instance).set(1, historyServiceLatency + serving_time / finishedQueueSize);
+                                            }
                                         }
                                     }
                                 }
@@ -533,6 +542,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                 powerCSVEntry.add("" + histInstance.getServiceType() + "_" + histInstance.getHostPort().getIp() + "_" + histInstance.getHostPort().getPort());
                                 powerCSVEntry.add("" + histInstance.getCurrentFrequncy());
                                 powerCSVEntry.add("" + dFormat.format(PowerModel.getPowerPerFreq(histInstance.getCurrentFrequncy())));
+                                powerWriter.writeNext(powerCSVEntry.toArray(new String[powerCSVEntry.size()]));
                             }
                             stageCSVEntry.add("" + ADJUST_ROUND);
                             stageCSVEntry.add("" + stage);
@@ -542,7 +552,6 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                         stageLatencyWriter.writeNext(stageCSVEntry.toArray(new String[stageCSVEntry.size()]));
                         queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                        powerWriter.writeNext(powerCSVEntry.toArray(new String[powerCSVEntry.size()]));
                         try {
                             queryLatencyWriter.flush();
                             stageLatencyWriter.flush();
@@ -579,6 +588,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
+                    processedResponses++;
                 } else {
                     LOG.info("warming up the application before entering the management mode");
                     try {
@@ -588,6 +598,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                 }
             }
+            LOG.info("1000 responses have been received, shutting down the command center");
         }
 
 //        private void withdrawServiceInstance() {
