@@ -569,7 +569,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                 stageQoSRatio.put(stage, stageQoSRatio.get(stage) / totalLatency * QoSTarget);
                             }
                             if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.ADAPTIVE_BOOST)) {
-                                performMulage(totalLatency / finishedQueueSize, percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
+                                performMulage(totalLatency / finishedQueueSize, queryDelayArray[queryDelayArray.length - 1], percentile.evaluate(queryDelayArray, LATENCY_PERCENTILE));
                             } else if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST)) {
                                 performPegasus();
                             } else {
@@ -724,8 +724,9 @@ public class CommandCenter implements SchedulerService.Iface {
          *
          * @param measuredLatency measured average latency during the moving window
          * @param percentile      percentile latency durin the past adjust interval
+         * @param instLatency
          */
-        private void performMulage(double measuredLatency, double percentile) {
+        private void performMulage(double measuredLatency, double instLatency, double percentile) {
             LOG.info("==================================================");
             LOG.info("adjust the power budget...");
             LOG.info("ranking the service instance based on the estimated delay((avg_queuing_time + avg_serving_time)*queue_length)");
@@ -815,7 +816,7 @@ public class CommandCenter implements SchedulerService.Iface {
 
             LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
-            if (Double.compare(measuredLatency, QoSTarget) > 0) {
+            if (Double.compare(measuredLatency, QoSTarget) > 0 || Double.compare(instLatency, QoSTarget) > 0) {
                 LOG.info("the QoS is violated, increase the power consumption of the slowest stage");
                 ServiceInstance slowestInstance = serviceInstanceList.get(0);
                 BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
@@ -842,11 +843,11 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                 }
                 overfit_account = 0;
-            } else if (Double.compare(measuredLatency, QoSTarget) <= 0 && Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
+            } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
                 // 2. QoS is within the stable range, leave it without further actions
                 LOG.info("the QoS is within the stable range, skip current adjusting interval");
                 overfit_account = 0;
-            } else if (Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
+            } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
                 /*
                 if (overfit_account == 3) {
