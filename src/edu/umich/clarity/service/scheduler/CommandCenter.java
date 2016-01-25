@@ -853,6 +853,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     powerConserve(serviceInstanceList);
                     overfit_account = 0;
                 } else {
+                    LOG.info("the QoS is overfitted for " + overfit_account + " out of 3 times");
                     overfit_account++;
                 }
             }
