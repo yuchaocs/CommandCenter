@@ -848,6 +848,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 overfit_account = 0;
             } else if (Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
+                /*
                 if (overfit_account == 3) {
                     LOG.info("the QoS is overfitted, reduce the power consumption across stages");
                     powerConserve(serviceInstanceList);
@@ -856,6 +857,9 @@ public class CommandCenter implements SchedulerService.Iface {
                     LOG.info("the QoS is overfitted for " + overfit_account + " out of 3 times");
                     overfit_account++;
                 }
+                */
+                LOG.info("the QoS is overfitted, reduce the power consumption across stages");
+                powerConserve(serviceInstanceList);
             }
             // LOG.info("==================================================");
             ADJUST_ROUND++;
@@ -871,10 +875,10 @@ public class CommandCenter implements SchedulerService.Iface {
         private BoostDecision predictBoostDecision(ServiceInstance instance, double measuredLatency) {
             BoostDecision decision = new BoostDecision();
             Percentile percentile = new Percentile();
-            double tailLatencyFreq = 0;
-            double tailLatencyInstance = 0;
-            double requiredPowerInstance = 0;
-            double requiredPowerFreq = 0;
+            // double tailLatencyFreq = 0;
+            // double tailLatencyInstance = 0;
+            // double requiredPowerInstance = 0;
+            // double requiredPowerFreq = 0;
             double speedup = 0;
 
             double stageQoSTarget = stageQoSRatio.get(instance.getServiceType());
@@ -922,9 +926,9 @@ public class CommandCenter implements SchedulerService.Iface {
                 for (int index = originIndex + 1; index < freqRangeList.size(); index++) {
                     frequencyIndex = index;
                     frequencyBoostingDelay = 0;
-                    speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(index));
+                    speedup = speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(index)) / speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy());
                     for (int i = 0; i < targetQueueStats.size(); i++) {
-                        frequencyBoostingDelay += (targetServeStats.get(i).doubleValue() + targetQueueStats.get(i).doubleValue()) * (1 - speedup);
+                        frequencyBoostingDelay += (targetServeStats.get(i).doubleValue() + targetQueueStats.get(i).doubleValue()) * speedup;
                     }
                     frequencyBoostingDelay = (frequencyBoostingDelay + constantLatencyStats) / totalHistoryQuery;
                     if (frequencyBoostingDelay < stageQoSTarget) {
@@ -1022,13 +1026,14 @@ public class CommandCenter implements SchedulerService.Iface {
                             }
                         } else {
                             // reduce the frequency of the instance without violating the QoS
+                            double currentSpeedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy());
                             int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1;
                             for (; originIndex > -1; originIndex--) {
                                 double stageLatency = 0;
-                                double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
+                                double evalSpeedup = speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
                                 for (ServiceInstance histInstance : stageQueryHist.get(instance.getServiceType()).keySet()) {
                                     if (histInstance.equals(instance)) {
-                                        stageLatency += (stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1)) / (1 - speedup);
+                                        stageLatency += (stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1)) * (evalSpeedup / currentSpeedup);
                                     } else {
                                         stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
                                     }
@@ -1047,9 +1052,9 @@ public class CommandCenter implements SchedulerService.Iface {
                                 freqTarget.add(originIndex);
                                 double oldQueueValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
                                 double oldServiceValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(1);
-                                double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
-                                stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldQueueValue / (1 - speedup));
-                                stageQueryHist.get(instance.getServiceType()).get(instance).set(1, oldServiceValue / (1 - speedup));
+                                double evalSpeedup = speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
+                                stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldQueueValue / (evalSpeedup / currentSpeedup));
+                                stageQueryHist.get(instance.getServiceType()).get(instance).set(1, oldServiceValue / (evalSpeedup / currentSpeedup));
                             }
                         }
                     } else {
