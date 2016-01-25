@@ -984,62 +984,66 @@ public class CommandCenter implements SchedulerService.Iface {
                 // 2.1 withdraw the instance if it is not violated the QoS target, otherwise skip current instance
                 // 2.2 reduce the frequency of the instance until it reaches the slowest or violates the QoS
                 for (ServiceInstance instance : serviceInstanceList) {
-                    if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0) {
-                        if (serviceMap.get(instance.getServiceType()).size() > 1) {
-                            double stageLatency = 0;
-                            for (ServiceInstance histInstance : stageQueryHist.get(instance.getServiceType()).keySet()) {
-                                if (histInstance.equals(instance)) {
-                                    stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) * 2.0 + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
-                                } else {
-                                    stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                    if (stageQueryHist.get(instance.getServiceType()).get(instance) != null) {
+                        if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0) {
+                            if (serviceMap.get(instance.getServiceType()).size() > 1) {
+                                double stageLatency = 0;
+                                for (ServiceInstance histInstance : stageQueryHist.get(instance.getServiceType()).keySet()) {
+                                    if (histInstance.equals(instance)) {
+                                        stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) * 2.0 + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                                    } else {
+                                        stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                                    }
                                 }
-                            }
-                            if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
-                                instanceWithdraw.add(instance);
-                                // LOG.info("stage " + instance.getServiceType() + " ,measured stage latency is " + stageLatency + " ,QoS ratio is " + stageQoSRatio.get(instance.getServiceType()));
-                                // LOG.info("reduce power consumption of instance " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
-                                if (stageQueryHist.get(instance.getServiceType()).get(instance) != null) {
-                                    double oldValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
-                                    stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldValue * 2.0);
+                                if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
+                                    instanceWithdraw.add(instance);
+                                    // LOG.info("stage " + instance.getServiceType() + " ,measured stage latency is " + stageLatency + " ,QoS ratio is " + stageQoSRatio.get(instance.getServiceType()));
+                                    // LOG.info("reduce power consumption of instance " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
+                                    if (stageQueryHist.get(instance.getServiceType()).get(instance) != null) {
+                                        double oldValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
+                                        stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldValue * 2.0);
+                                    }
+                                } else {
+                                    continue;
                                 }
                             } else {
+                                // there is only one instance left for this stage
                                 continue;
                             }
                         } else {
-                            // there is only one instance left for this stage
-                            continue;
-                        }
-                    } else {
-                        // reduce the frequency of the instance without violating the QoS
-                        int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1;
-                        for (; originIndex > -1; originIndex--) {
-                            double stageLatency = 0;
-                            double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
-                            for (ServiceInstance histInstance : stageQueryHist.get(instance.getServiceType()).keySet()) {
-                                if (histInstance.equals(instance)) {
-                                    stageLatency += (stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1)) / (1 - speedup);
+                            // reduce the frequency of the instance without violating the QoS
+                            int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1;
+                            for (; originIndex > -1; originIndex--) {
+                                double stageLatency = 0;
+                                double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
+                                for (ServiceInstance histInstance : stageQueryHist.get(instance.getServiceType()).keySet()) {
+                                    if (histInstance.equals(instance)) {
+                                        stageLatency += (stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1)) / (1 - speedup);
+                                    } else {
+                                        stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                                    }
+                                }
+                                if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
+                                    continue;
                                 } else {
-                                    stageLatency += stageQueryHist.get(instance.getServiceType()).get(histInstance).get(0) + stageQueryHist.get(instance.getServiceType()).get(histInstance).get(1);
+                                    break;
                                 }
                             }
-                            if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
-                                continue;
-                            } else {
-                                break;
+                            if (originIndex != freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1) {
+                                if (originIndex < 0) {
+                                    originIndex = 0;
+                                }
+                                instanceReduceFreq.add(instance);
+                                freqTarget.add(originIndex);
+                                double oldQueueValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
+                                double oldServiceValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(1);
+                                double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
+                                stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldQueueValue / (1 - speedup));
+                                stageQueryHist.get(instance.getServiceType()).get(instance).set(1, oldServiceValue / (1 - speedup));
                             }
                         }
-                        if (originIndex != freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1) {
-                            if (originIndex < 0) {
-                                originIndex = 0;
-                            }
-                            instanceReduceFreq.add(instance);
-                            freqTarget.add(originIndex);
-                            double oldQueueValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
-                            double oldServiceValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(1);
-                            double speedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy()) - speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
-                            stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldQueueValue / (1 - speedup));
-                            stageQueryHist.get(instance.getServiceType()).get(instance).set(1, oldServiceValue / (1 - speedup));
-                        }
+                    } else {
+                        instanceWithdraw.add(instance);
                     }
                 }
 
