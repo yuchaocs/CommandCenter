@@ -641,7 +641,7 @@ public class CommandCenter implements SchedulerService.Iface {
             candidateMap.get(instance.getServiceType()).add(instance);
             LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
             // LOG.info("the current global power consumption is " + POWER_BUDGET.get().doubleValue());
-            LOG.info("==================================================");
+            // LOG.info("==================================================");
         }
 
         /**
@@ -847,7 +847,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 LOG.info("the QoS is overfitted, reduce the power consumption across stages");
                 powerConserve(serviceInstanceList);
             }
-            LOG.info("==================================================");
+            // LOG.info("==================================================");
             ADJUST_ROUND++;
         }
 
