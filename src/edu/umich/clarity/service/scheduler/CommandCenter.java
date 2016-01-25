@@ -110,6 +110,8 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
 
+    private static int overfit_account = 0;
+
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
@@ -839,13 +841,20 @@ public class CommandCenter implements SchedulerService.Iface {
                         LOG.info("node manager has ran out of service instances, skip current adjustment");
                     }
                 }
+                overfit_account = 0;
             } else if (Double.compare(measuredLatency, QoSTarget) <= 0 && Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
                 // 2. QoS is within the stable range, leave it without further actions
                 LOG.info("the QoS is within the stable range, skip current adjusting interval");
+                overfit_account = 0;
             } else if (Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
-                LOG.info("the QoS is overfitted, reduce the power consumption across stages");
-                powerConserve(serviceInstanceList);
+                if (overfit_account == 3) {
+                    LOG.info("the QoS is overfitted, reduce the power consumption across stages");
+                    powerConserve(serviceInstanceList);
+                    overfit_account = 0;
+                } else {
+                    overfit_account++;
+                }
             }
             // LOG.info("==================================================");
             ADJUST_ROUND++;
