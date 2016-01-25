@@ -814,7 +814,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info(freqList);
             LOG.info(loadProb);
 
-            LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
+            LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + " , instantaneous latency QoS is " + instLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
             if (Double.compare(measuredLatency, QoSTarget) > 0 || Double.compare(instLatency, QoSTarget) > 0) {
                 LOG.info("the QoS is violated, increase the power consumption of the slowest stage");
@@ -857,8 +857,8 @@ public class CommandCenter implements SchedulerService.Iface {
                     LOG.info("the QoS is overfitted for " + overfit_account + " out of 3 times");
                     overfit_account++;
                 }
-                LOG.info("the QoS is overfitted, reduce the power consumption across stages");
-                powerConserve(serviceInstanceList);
+                // LOG.info("the QoS is overfitted, reduce the power consumption across stages");
+                // powerConserve(serviceInstanceList);
             }
             // LOG.info("==================================================");
             ADJUST_ROUND++;
