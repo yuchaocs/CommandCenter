@@ -619,8 +619,6 @@ public class CommandCenter implements SchedulerService.Iface {
          * new withdraw logic: if a service instance spends more than half of the withdraw interval in idle state, then withdraw it. Also in order to not be too aggressive, withdraw at most one instance of each service type.
          */
         private void withdrawServiceInstance(ServiceInstance instance) {
-            LOG.info("==================================================");
-            LOG.info("start to withdraw the service instances...");
 
             // shutdown the service instance and relinquish the gobal power budget
 
@@ -629,12 +627,9 @@ public class CommandCenter implements SchedulerService.Iface {
             serviceInstanceList.remove(instance);
             double incrementalProb = instance.getLoadProb() / serviceInstanceList.size();
             for (int i = 0; i < serviceInstanceList.size(); i++) {
-                if (i == serviceInstanceList.size() - 1) {
-                    serviceInstanceList.get(i).setLoadProb(serviceInstanceList.get(i).getLoadProb() + 1 - i * incrementalProb);
-                } else {
-                    serviceInstanceList.get(i).setLoadProb(serviceInstanceList.get(i).getLoadProb() + incrementalProb);
-                }
+                serviceInstanceList.get(i).setLoadProb(serviceInstanceList.get(i).getLoadProb() + incrementalProb);
             }
+
             // Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
             // ServiceInstance fastestInstance = serviceInstanceList.get(serviceInstanceList.size() - 1);
             // fastestInstance.setLoadProb(fastestInstance.getLoadProb() + instance.getLoadProb());
@@ -793,7 +788,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 serviceInstanceList.addAll(serviceMap.get(serviceType));
             }
-            LOG.info("adjust round " + ADJUST_ROUND + ":" + " the measured avgerage and percentile latency is " + measuredLatency + " and " + percentile);
+            LOG.info("adjust round " + ADJUST_ROUND + ":" + " the measured avgerage and percentile latency is " + dFormat.format(measuredLatency) + " and " + dFormat.format(percentile));
             LOG.info("==================================================");
             // sort the service instance based on the 99th queuing latency
             Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
@@ -802,9 +797,14 @@ public class CommandCenter implements SchedulerService.Iface {
             String loadProb = "";
             for (int i = 0; i < serviceInstanceList.size(); i++) {
                 ServiceInstance instance = serviceInstanceList.get(i);
-                instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort() + "-->";
-                freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy() + "-->";
-                loadProb += instance.getServiceType() + "@" + instance.getLoadProb() + "-->";
+                instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort();
+                freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy();
+                loadProb += instance.getServiceType() + "@" + instance.getLoadProb();
+                if (i != serviceInstanceList.size() - 1) {
+                    instanceRanking += "-->";
+                    freqList += "-->";
+                    loadProb += "-->";
+                }
             }
             LOG.info("service instance ranking from slowest to fastest");
             LOG.info(instanceRanking);
@@ -923,7 +923,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 // 3. choose the boosting that satisfies the QoS target with least power consumption
                 // otherwise, choose the close to the QoS target
-                LOG.info("predicted QoS with instance boosting is " + instanceBoostingDelay + " while with frequency boosting is " + frequencyBoostingDelay);
+                LOG.info("predicted QoS with instance boosting is " + dFormat.format(instanceBoostingDelay) + " while with frequency boosting is " + dFormat.format(frequencyBoostingDelay));
                 if (instanceBoostingDelay <= stageQoSTarget && frequencyBoostingDelay <= stageQoSTarget) {
                     if (PowerModel.getPowerPerFreq(freqRangeList.get(frequencyIndex)) <= PowerModel.getPowerPerFreq(instance.getCurrentFrequncy())) {
                         decision.setDecision(BoostDecision.FREQUENCY_BOOST);
@@ -1030,14 +1030,16 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
 
                 // perform the power conserve decisions
-                if(instanceWithdraw.size() != 0) {
+                if (instanceWithdraw.size() != 0) {
+                    LOG.info("==================================================");
+                    LOG.info("start to withdraw the service instances...");
                     for (ServiceInstance instance : instanceWithdraw) {
                         if (serviceMap.get(instance.getServiceType()).size() > 1) {
                             withdrawServiceInstance(instance);
                         }
                     }
                 }
-                if(instanceReduceFreq.size() != 0) {
+                if (instanceReduceFreq.size() != 0) {
                     LOG.info("==================================================");
                     LOG.info("start to reduce the frequency of service instances...");
                     for (int index = 0; index < instanceReduceFreq.size(); index++) {
