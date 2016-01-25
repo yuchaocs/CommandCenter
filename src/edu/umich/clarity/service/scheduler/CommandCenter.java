@@ -980,10 +980,12 @@ public class CommandCenter implements SchedulerService.Iface {
                             }
                             if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
                                 instanceWithdraw.add(instance);
-                                LOG.info("stage " + instance.getServiceType() + " ,measured stage latency is " + stageLatency + " ,QoS ratio is " + stageQoSRatio.get(instance.getServiceType()));
-                                LOG.info("reduce power consumption of instance " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
-                                double oldValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
-                                stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldValue * 2.0);
+                                // LOG.info("stage " + instance.getServiceType() + " ,measured stage latency is " + stageLatency + " ,QoS ratio is " + stageQoSRatio.get(instance.getServiceType()));
+                                // LOG.info("reduce power consumption of instance " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
+                                if (stageQueryHist.get(instance.getServiceType()).get(instance) != null) {
+                                    double oldValue = stageQueryHist.get(instance.getServiceType()).get(instance).get(0);
+                                    stageQueryHist.get(instance.getServiceType()).get(instance).set(0, oldValue * 2.0);
+                                }
                             } else {
                                 continue;
                             }
