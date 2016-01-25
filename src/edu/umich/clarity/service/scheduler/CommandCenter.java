@@ -849,7 +849,6 @@ public class CommandCenter implements SchedulerService.Iface {
                 overfit_account = 0;
             } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
-                /*
                 if (overfit_account == 3) {
                     LOG.info("the QoS is overfitted, reduce the power consumption across stages");
                     powerConserve(serviceInstanceList);
@@ -858,7 +857,6 @@ public class CommandCenter implements SchedulerService.Iface {
                     LOG.info("the QoS is overfitted for " + overfit_account + " out of 3 times");
                     overfit_account++;
                 }
-                */
                 LOG.info("the QoS is overfitted, reduce the power consumption across stages");
                 powerConserve(serviceInstanceList);
             }
