@@ -39,7 +39,7 @@ public class CommandCenter implements SchedulerService.Iface {
     private static final String[] POWER_FILE_HEADER = {"adjust_id", "service_stage", "service_instance", "frequency", "power"};
     private static final String[] STAGE_LATENCY_FILE_HEADER = {"adjust_id", "stage_name", "total_queuing", "total_serving", "total_latency"};
     private static final String[] PEGASUS_POWER_FILE_HEADER = {"adjust_id", "elapse_time", "package_power"};
-
+    private static final int MINIMUM_QUEUE_LENGTH = 3;
     // private static final double DEFAULT_FREQUENCY = 1.8;
     // private static final int MINIMUM_QUEUE_LENGTH = 3;
 
@@ -925,24 +925,38 @@ public class CommandCenter implements SchedulerService.Iface {
                 // otherwise, choose the close to the QoS target
                 LOG.info("predicted QoS with instance boosting is " + dFormat.format(instanceBoostingDelay) + " while with frequency boosting is " + dFormat.format(frequencyBoostingDelay));
                 if (instanceBoostingDelay <= stageQoSTarget && frequencyBoostingDelay <= stageQoSTarget) {
-                    if (PowerModel.getPowerPerFreq(freqRangeList.get(frequencyIndex)) <= PowerModel.getPowerPerFreq(instance.getCurrentFrequncy())) {
+                    if (instance.getCurrentQueueLength() < MINIMUM_QUEUE_LENGTH) {
                         decision.setDecision(BoostDecision.FREQUENCY_BOOST);
                         decision.setFrequency(freqRangeList.get(frequencyIndex));
+                        LOG.info("the queue length of the instance is less than minimum (3)");
                         LOG.info("service boosting decision: (frequency boosting), increase the frequency from " + instance.getCurrentFrequncy() + " ---> " + freqRangeList.get(frequencyIndex) + "GHz");
                     } else {
-                        decision.setDecision(BoostDecision.INSTANCE_BOOST);
-                        decision.setFrequency(instance.getCurrentFrequncy());
-                        LOG.info("service boosting decision: (instance boosting), launch a new instance with frequency " + instance.getCurrentFrequncy() + "GHz");
+                        if (PowerModel.getPowerPerFreq(freqRangeList.get(frequencyIndex)) <= PowerModel.getPowerPerFreq(instance.getCurrentFrequncy())) {
+                            decision.setDecision(BoostDecision.FREQUENCY_BOOST);
+                            decision.setFrequency(freqRangeList.get(frequencyIndex));
+                            LOG.info("service boosting decision: (frequency boosting), increase the frequency from " + instance.getCurrentFrequncy() + " ---> " + freqRangeList.get(frequencyIndex) + "GHz");
+                        } else {
+                            decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                            decision.setFrequency(instance.getCurrentFrequncy());
+                            LOG.info("service boosting decision: (instance boosting), launch a new instance with frequency " + instance.getCurrentFrequncy() + "GHz");
+                        }
                     }
                 } else {
-                    if (instanceBoostingDelay <= frequencyBoostingDelay) {
-                        decision.setDecision(BoostDecision.INSTANCE_BOOST);
-                        decision.setFrequency(instance.getCurrentFrequncy());
-                        LOG.info("service boosting decision: (instance boosting), launch a new instance with frequency " + instance.getCurrentFrequncy() + "GHz");
-                    } else {
+                    if (instance.getCurrentQueueLength() < MINIMUM_QUEUE_LENGTH) {
                         decision.setDecision(BoostDecision.FREQUENCY_BOOST);
                         decision.setFrequency(freqRangeList.get(frequencyIndex));
+                        LOG.info("the queue length of the instance is less than minimum (3)");
                         LOG.info("service boosting decision: (frequency boosting), increase the frequency from " + instance.getCurrentFrequncy() + " ---> " + freqRangeList.get(frequencyIndex) + "GHz");
+                    } else {
+                        if (instanceBoostingDelay <= frequencyBoostingDelay) {
+                            decision.setDecision(BoostDecision.INSTANCE_BOOST);
+                            decision.setFrequency(instance.getCurrentFrequncy());
+                            LOG.info("service boosting decision: (instance boosting), launch a new instance with frequency " + instance.getCurrentFrequncy() + "GHz");
+                        } else {
+                            decision.setDecision(BoostDecision.FREQUENCY_BOOST);
+                            decision.setFrequency(freqRangeList.get(frequencyIndex));
+                            LOG.info("service boosting decision: (frequency boosting), increase the frequency from " + instance.getCurrentFrequncy() + " ---> " + freqRangeList.get(frequencyIndex) + "GHz");
+                        }
                     }
                 }
             }
@@ -1058,6 +1072,9 @@ public class CommandCenter implements SchedulerService.Iface {
                             ex.printStackTrace();
                         }
                     }
+                }
+                if (instanceWithdraw.size() == 0 && instanceReduceFreq.size() == 0) {
+                    LOG.info("no instance can be slowed down (already at the lowest frequency ) or withdraw (only instance within stage)");
                 }
             } else {
                 LOG.info("no service instance available to recycle");
