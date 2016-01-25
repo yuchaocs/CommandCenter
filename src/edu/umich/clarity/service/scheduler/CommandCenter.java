@@ -460,6 +460,7 @@ public class CommandCenter implements SchedulerService.Iface {
             while (processedResponses < 1000) {
                 if (warmupCount.get() > WARMUP_COUNT) {
                     try {
+                        LOG.info("==================================================");
                         LOG.info("sleep for " + ADJUST_QOS_INTERVAL + " ms before performing QoS management");
                         Thread.sleep(ADJUST_QOS_INTERVAL);
                         // long totalLatency = 0;
@@ -577,6 +578,7 @@ public class CommandCenter implements SchedulerService.Iface {
                             for (String stage : serviceMap.keySet()) {
                                 for (ServiceInstance instance : serviceMap.get(stage)) {
                                     GLOBAL_POWER_CONSUMPTION += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
+                                    instance.setQueriesBetweenAdjust(0);
                                 }
                             }
                             // clear up the data structure for next adjustment
@@ -771,7 +773,7 @@ public class CommandCenter implements SchedulerService.Iface {
                             instance.setQueuingTimeAvg(totalQueuing / statLength);
                             instance.setServingTimeAvg(totalServing / statLength);
                             LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
-                            LOG.info("average queuing time: " + instance.getQueuingTimeAvg() + "; average serving time: " + (totalServing / statLength) + "; current queue length: " + currentQueueLength);
+                            LOG.info("average queuing time: " + dFormat.format(instance.getQueuingTimeAvg()) + "; average serving time: " + dFormat.format((totalServing / statLength)) + "; current queue length: " + currentQueueLength);
                         } else {
                             instance.setQueuingTimeAvg(0);
                             instance.setCurrentQueueLength(0);
@@ -809,7 +811,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info(freqList);
             LOG.info(loadProb);
 
-            LOG.info("measured latency QoS is " + measuredLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
+            LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
             if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 LOG.info("the QoS is violated, increase the power consumption of the slowest stage");
@@ -842,7 +844,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 LOG.info("the QoS is within the stable range, skip current adjusting interval");
             } else if (Double.compare(measuredLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
-                LOG.info("the QoS is overfitted, reduce the power consumption of the fastest stage");
+                LOG.info("the QoS is overfitted, reduce the power consumption across stages");
                 powerConserve(serviceInstanceList);
             }
             LOG.info("==================================================");
@@ -960,7 +962,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 List<ServiceInstance> instanceReduceFreq = new LinkedList<ServiceInstance>();
                 List<Integer> freqTarget = new LinkedList<Integer>();
                 for (String stage : stageQoSRatio.keySet()) {
-                    LOG.info("stage: " + stage + " with QoS budget of " + stageQoSRatio.get(stage));
+                    LOG.info("stage: " + stage + " with QoS budget of " + dFormat.format(stageQoSRatio.get(stage)));
                 }
                 // 1. iterate through the service instances (from fastest to slowest)
                 // 2. if instance is already running at slowest frequency
@@ -1028,27 +1030,31 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
 
                 // perform the power conserve decisions
-                for (ServiceInstance instance : instanceWithdraw) {
-                    if (serviceMap.get(instance.getServiceType()).size() > 1) {
-                        withdrawServiceInstance(instance);
+                if(instanceWithdraw.size() != 0) {
+                    for (ServiceInstance instance : instanceWithdraw) {
+                        if (serviceMap.get(instance.getServiceType()).size() > 1) {
+                            withdrawServiceInstance(instance);
+                        }
                     }
                 }
-                LOG.info("==================================================");
-                LOG.info("start to reduce the frequency of service instances...");
-                for (int index = 0; index < instanceReduceFreq.size(); index++) {
-                    ServiceInstance instance = instanceReduceFreq.get(index);
-                    double oldFreq = instance.getCurrentFrequncy();
-                    instance.setCurrentFrequncy(freqRangeList.get(freqTarget.get(index)));
-                    try {
-                        TClient clientDelegate = new TClient();
-                        IPAService.Client client = clientDelegate.createIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
-                        client.updatBudget(freqRangeList.get(freqTarget.get(index)));
-                        clientDelegate.close();
-                        LOG.info("the frequency of service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " has been decreased from " + oldFreq + " ---> " + instance.getCurrentFrequncy() + "GHz");
-                    } catch (IOException ex) {
-                        ex.printStackTrace();
-                    } catch (TException ex) {
-                        ex.printStackTrace();
+                if(instanceReduceFreq.size() != 0) {
+                    LOG.info("==================================================");
+                    LOG.info("start to reduce the frequency of service instances...");
+                    for (int index = 0; index < instanceReduceFreq.size(); index++) {
+                        ServiceInstance instance = instanceReduceFreq.get(index);
+                        double oldFreq = instance.getCurrentFrequncy();
+                        instance.setCurrentFrequncy(freqRangeList.get(freqTarget.get(index)));
+                        try {
+                            TClient clientDelegate = new TClient();
+                            IPAService.Client client = clientDelegate.createIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
+                            client.updatBudget(freqRangeList.get(freqTarget.get(index)));
+                            clientDelegate.close();
+                            LOG.info("the frequency of service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort() + " has been decreased from " + oldFreq + " ---> " + instance.getCurrentFrequncy() + "GHz");
+                        } catch (IOException ex) {
+                            ex.printStackTrace();
+                        } catch (TException ex) {
+                            ex.printStackTrace();
+                        }
                     }
                 }
             } else {
