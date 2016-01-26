@@ -846,7 +846,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 // overfit_account = 0;
                 // STAY_BOOSTED = 3;
-                LOG.info("keep the boosting decision for " + STAY_BOOSTED * ADJUST_QOS_INTERVAL + " ms");
+                // LOG.info("keep the boosting decision for " + STAY_BOOSTED * ADJUST_QOS_INTERVAL + " ms");
             } else if (Double.compare(instLatency, QoSTarget) > 0) {
                 LOG.info("the instantaneous QoS is violated, increase the power consumption of the slowest stage");
                 ServiceInstance slowestInstance = serviceInstanceList.get(0);
@@ -1068,6 +1068,9 @@ public class CommandCenter implements SchedulerService.Iface {
                                     }
                                 }
                                 if (Double.compare(stageLatency, stageQoSRatio.get(instance.getServiceType())) < 0) {
+                                    LOG.info("stage type: " + instance.getServiceType());
+                                    LOG.info("stage latency: " + stageLatency);
+                                    LOG.info("stage ratio: " + stageQoSRatio.get(instance.getServiceType()));
                                     continue;
                                 } else {
                                     break;
