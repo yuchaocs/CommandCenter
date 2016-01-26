@@ -817,75 +817,77 @@ public class CommandCenter implements SchedulerService.Iface {
 
             LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + " , instantaneous latency QoS is " + instLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
-            if (STAY_BOOSTED == 0) {
-                if (Double.compare(measuredLatency, QoSTarget) > 0) {
-                    LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
-                    ServiceInstance slowestInstance = serviceInstanceList.get(0);
-                    BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
-                    if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
-                        IPAService.Client client = null;
-                        double oldFreq = slowestInstance.getCurrentFrequncy();
-                        try {
-                            TClient clientDelegate = new TClient();
-                            client = clientDelegate.createIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
-                            client.updatBudget(decision.getFrequency());
-                            clientDelegate.close();
-                            slowestInstance.setCurrentFrequncy(decision.getFrequency());
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        } catch (TException e) {
-                            e.printStackTrace();
-                        }
-                        LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
-                    } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
-                        if (candidateMap.get(slowestInstance.getServiceType()).size() != 0) {
-                            launchServiceInstance(slowestInstance, decision.getFrequency());
-                        } else {
-                            LOG.info("node manager has ran out of service instances, skip current adjustment");
-                        }
+            // if (STAY_BOOSTED == 0) {
+            if (Double.compare(measuredLatency, QoSTarget) > 0) {
+                LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
+                ServiceInstance slowestInstance = serviceInstanceList.get(0);
+                BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
+                if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
+                    IPAService.Client client = null;
+                    double oldFreq = slowestInstance.getCurrentFrequncy();
+                    try {
+                        TClient clientDelegate = new TClient();
+                        client = clientDelegate.createIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
+                        client.updatBudget(decision.getFrequency());
+                        clientDelegate.close();
+                        slowestInstance.setCurrentFrequncy(decision.getFrequency());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } catch (TException e) {
+                        e.printStackTrace();
                     }
-                    // overfit_account = 0;
-                    STAY_BOOSTED = 3;
-                    LOG.info("keep the boosting decision for " + STAY_BOOSTED * ADJUST_QOS_INTERVAL + " ms");
-                } else if (Double.compare(instLatency, QoSTarget) > 0) {
-                    LOG.info("the instantaneous QoS is violated, increase the power consumption of the slowest stage");
-                    ServiceInstance slowestInstance = serviceInstanceList.get(0);
-                    BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
-                    if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
-                        IPAService.Client client = null;
-                        double oldFreq = slowestInstance.getCurrentFrequncy();
-                        try {
-                            TClient clientDelegate = new TClient();
-                            client = clientDelegate.createIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
-                            client.updatBudget(decision.getFrequency());
-                            clientDelegate.close();
-                            slowestInstance.setCurrentFrequncy(decision.getFrequency());
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        } catch (TException e) {
-                            e.printStackTrace();
-                        }
-                        LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
-                    } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
-                        if (candidateMap.get(slowestInstance.getServiceType()).size() != 0) {
-                            launchServiceInstance(slowestInstance, decision.getFrequency());
-                        } else {
-                            LOG.info("node manager has ran out of service instances, skip current adjustment");
-                        }
+                    LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
+                } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                    if (candidateMap.get(slowestInstance.getServiceType()).size() != 0) {
+                        launchServiceInstance(slowestInstance, decision.getFrequency());
+                    } else {
+                        LOG.info("node manager has ran out of service instances, skip current adjustment");
                     }
-                } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
-                    // 2. QoS is within the stable range, leave it without further actions
-                    LOG.info("the QoS is within the stable range, skip current adjusting interval");
-                    // overfit_account = 0;
-                } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
-                    // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
-                    LOG.info("the QoS is overfitted, reduce the power consumption across stages");
-                    powerConserve(serviceInstanceList);
                 }
+                // overfit_account = 0;
+                // STAY_BOOSTED = 3;
+                LOG.info("keep the boosting decision for " + STAY_BOOSTED * ADJUST_QOS_INTERVAL + " ms");
+            } else if (Double.compare(instLatency, QoSTarget) > 0) {
+                LOG.info("the instantaneous QoS is violated, increase the power consumption of the slowest stage");
+                ServiceInstance slowestInstance = serviceInstanceList.get(0);
+                BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
+                if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
+                    IPAService.Client client = null;
+                    double oldFreq = slowestInstance.getCurrentFrequncy();
+                    try {
+                        TClient clientDelegate = new TClient();
+                        client = clientDelegate.createIPAClient(slowestInstance.getHostPort().getIp(), slowestInstance.getHostPort().getPort());
+                        client.updatBudget(decision.getFrequency());
+                        clientDelegate.close();
+                        slowestInstance.setCurrentFrequncy(decision.getFrequency());
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } catch (TException e) {
+                        e.printStackTrace();
+                    }
+                    LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
+                } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
+                    if (candidateMap.get(slowestInstance.getServiceType()).size() != 0) {
+                        launchServiceInstance(slowestInstance, decision.getFrequency());
+                    } else {
+                        LOG.info("node manager has ran out of service instances, skip current adjustment");
+                    }
+                }
+            } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
+                // 2. QoS is within the stable range, leave it without further actions
+                LOG.info("the QoS is within the stable range, skip current adjusting interval");
+                // overfit_account = 0;
+            } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
+                // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
+                LOG.info("the QoS is overfitted, reduce the power consumption across stages");
+                powerConserve(serviceInstanceList);
+            }
+            /*
             } else {
                 STAY_BOOSTED--;
                 LOG.info("keep previous boosting decision for " + STAY_BOOSTED * ADJUST_QOS_INTERVAL + " ms");
             }
+            */
             // LOG.info("==================================================");
             ADJUST_ROUND++;
         }
@@ -1022,8 +1024,8 @@ public class CommandCenter implements SchedulerService.Iface {
                 // 2.1 if instance is not the only instance within its stage
                 // 2.1 withdraw the instance if it is not violated the QoS target, otherwise skip current instance
                 // 2.2 reduce the frequency of the instance until it reaches the slowest or violates the QoS
-                for (int index = serviceInstanceList.size() - 1; index > -1; index--){
-                // for (ServiceInstance instance : serviceInstanceList) {
+                for (int index = serviceInstanceList.size() - 1; index > -1; index--) {
+                    // for (ServiceInstance instance : serviceInstanceList) {
                     ServiceInstance instance = serviceInstanceList.get(index);
                     if (stageQueryHist.get(instance.getServiceType()).get(instance) != null) {
                         if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0) {
@@ -1111,7 +1113,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     LOG.info("start to reduce the frequency of service instances...");
                     // to be conservative, only process one instance
                     for (int index = 0; index < instanceReduceFreq.size(); index++) {
-                    // for (int index = 0; index < 1; index++) {
+                        // for (int index = 0; index < 1; index++) {
                         ServiceInstance instance = instanceReduceFreq.get(index);
                         double oldFreq = instance.getCurrentFrequncy();
                         instance.setCurrentFrequncy(freqRangeList.get(freqTarget.get(index)));
