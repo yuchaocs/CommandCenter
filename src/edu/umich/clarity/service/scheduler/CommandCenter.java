@@ -1046,10 +1046,11 @@ public class CommandCenter implements SchedulerService.Iface {
             // skip the instance already reaches the lowest state
             for (int index = serviceInstanceList.size() - 1; index > -1; index--) {
                 // for (ServiceInstance instance : serviceInstanceList) {
+                instance = serviceInstanceList.get(index);
                 if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0 && serviceMap.get(instance.getServiceType()).size() == 1) {
                     continue;
                 } else {
-                    instance = serviceInstanceList.get(index);
+                    break;
                 }
             }
             if (instQueryHist.get(instance) != null) {
