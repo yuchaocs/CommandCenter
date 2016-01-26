@@ -881,8 +881,8 @@ public class CommandCenter implements SchedulerService.Iface {
                 // STAY_BOOSTED = 2;
                 // LOG.info("keep the boosting decision for " + STAY_BOOSTED * ADJUST_QOS_INTERVAL + " ms");
             }*/
-            if (Double.compare(measuredLatency, QoSTarget) > 0) {
-                LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
+            if (Double.compare(measuredLatency, QoSTarget) > 0 || Double.compare(instLatency, QoSTarget) > 0) {
+                LOG.info("the average or instantaneous QoS is violated, increase the power consumption of the slowest stage");
                 ServiceInstance slowestInstance = serviceInstanceList.get(0);
                 BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
                 if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
