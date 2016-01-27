@@ -197,13 +197,13 @@ public class CommandCenter implements SchedulerService.Iface {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        for (int i = 9075; i < 9080; i++) {
+        for (int i = 9079; i < 9080; i++) {
             candidatePortList.add(i);
         }
-        for (int i = 9085; i < 9090; i++) {
+        for (int i = 9089; i < 9090; i++) {
             candidatePortList.add(i);
         }
-        for (int i = 9094; i < 9100; i++) {
+        for (int i = 9099; i < 9100; i++) {
             candidatePortList.add(i);
         }
         // POWER_BUDGET.set(GLOBAL_POWER_CONSUMPTION);
