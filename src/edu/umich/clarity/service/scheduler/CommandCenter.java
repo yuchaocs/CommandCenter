@@ -349,6 +349,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceMap.get(appName).add(serviceInstance);
                     for (ServiceInstance instance : serviceMap.get(appName)) {
                         instance.setLoadProb(loadProb);
+                        LOG.info("instance port: " + instance.getHostPort().getPort() + ", load prob: " + instance.getLoadProb());
                     }
                 } else {
                     // List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
@@ -360,7 +361,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 GLOBAL_POWER_CONSUMPTION += PowerModel.getPowerPerFreq(message.getBudget());
                 LOG.info("putting it into the live instance list (current size for " + appName + ": " + serviceMap.get(appName).size() + ")");
-                LOG.info("current global power consumption is " + GLOBAL_POWER_CONSUMPTION);
+                LOG.info("current global power consumption is " + dFormat.format(GLOBAL_POWER_CONSUMPTION));
             } else { // candidate instances, put into the candidate list
                 if (candidateMap.containsKey(appName)) {
                     candidateMap.get(appName).add(serviceInstance);
