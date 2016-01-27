@@ -108,10 +108,9 @@ public class CommandCenter implements SchedulerService.Iface {
 
     private static double currentPackagePower = (14 + 40) / 0.125;
     private static int waitRound = 0;
+    private static int overfit_account = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
-
-    private static int overfit_account = 0;
     // private static int STAY_BOOSTED = 0;
 
     public CommandCenter() {
@@ -746,10 +745,10 @@ public class CommandCenter implements SchedulerService.Iface {
          * 2. adjust the frequency of slowest service instance similar to pegasus
          * 2.1 if the highest frequency is reached, launch a new service instance with middle frequency level
          * 2.2 if the lowest frequency is reached, withdraw the service instance
-         * <p/>
+         * <p>
          * debug log format: serviceLatencyWriter
          * (adjust round, instance_id, current_frequency, query_latency)
-         * <p/>
+         * <p>
          * result log format: queryLatencyWriter
          * (adjust_round, measured_latency, percentile_latency, power_consumption)
          *
@@ -915,10 +914,10 @@ public class CommandCenter implements SchedulerService.Iface {
                 //if(Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
                 LOG.info("the QoS is overfitted, reduce the power consumption across stages");
-                powerConserve(serviceInstanceList);
-            }else if(Double.compare(instLatency, 0.6 * QoSTarget) < 0){
+                powerConserve(serviceInstanceList, false);
+            } else if (Double.compare(instLatency, 0.6 * QoSTarget) < 0) {
                 LOG.info("the QoS is overfitted, reduce the power consumption across stages");
-                powerConserve(serviceInstanceList);
+                powerConserve(serviceInstanceList, true);
             }
             /*
             }else {
@@ -1065,7 +1064,7 @@ public class CommandCenter implements SchedulerService.Iface {
          *
          * @param serviceInstanceList
          */
-        private void powerConserve(List<ServiceInstance> serviceInstanceList) {
+        private void powerConserve(List<ServiceInstance> serviceInstanceList, boolean aggressive) {
             // LOG.info("==================================================");
             // LOG.info("start to reduce the power consumption...");
             List<ServiceInstance> instanceWithdraw = new LinkedList<ServiceInstance>();
@@ -1164,10 +1163,11 @@ public class CommandCenter implements SchedulerService.Iface {
             }
 
             // perform the power conserve decisions
-            if (instanceWithdraw.size() != 0) {
-                LOG.info("==================================================");
-                LOG.info("start to withdraw the service instances...");
-                // to be conservative, only process one instance
+            if (aggressive) {
+                if (instanceWithdraw.size() != 0) {
+                    LOG.info("==================================================");
+                    LOG.info("start to withdraw the service instances...");
+                    // to be conservative, only process one instance
                 /*
                 for (ServiceInstance instance : instanceWithdraw) {
                     if (serviceMap.get(instance.getServiceType()).size() > 1) {
@@ -1181,7 +1181,8 @@ public class CommandCenter implements SchedulerService.Iface {
                         withdrawServiceInstance(instance);
                     }
                     */
-                withdrawServiceInstance(instanceWithdraw.get(0));
+                    withdrawServiceInstance(instanceWithdraw.get(0));
+                }
             }
             if (instanceReduceFreq.size() != 0) {
                 LOG.info("==================================================");
@@ -1191,7 +1192,12 @@ public class CommandCenter implements SchedulerService.Iface {
                     // for (int index = 0; index < 1; index++) {
                     ServiceInstance freqInstance = instanceReduceFreq.get(index);
                     double oldFreq = freqInstance.getCurrentFrequncy();
-                    freqInstance.setCurrentFrequncy(freqRangeList.get(freqTarget.get(index)));
+                    if (aggressive) {
+                        freqInstance.setCurrentFrequncy(freqRangeList.get(freqTarget.get(index)));
+                    } else {
+                        int diff = (freqRangeList.indexOf(oldFreq) - freqTarget.get(index)) / 2;
+                        freqInstance.setCurrentFrequncy(freqRangeList.get(diff + freqTarget.get(index)));
+                    }
                     try {
                         TClient clientDelegate = new TClient();
                         IPAService.Client client = clientDelegate.createIPAClient(freqInstance.getHostPort().getIp(), freqInstance.getHostPort().getPort());
