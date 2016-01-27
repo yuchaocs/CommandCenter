@@ -349,7 +349,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceMap.get(appName).add(serviceInstance);
                     for (ServiceInstance instance : serviceMap.get(appName)) {
                         instance.setLoadProb(loadProb);
-                        LOG.info("instance port: " + instance.getHostPort().getPort() + ", load prob: " + instance.getLoadProb());
+                        // LOG.info("instance port: " + instance.getHostPort().getPort() + ", load prob: " + instance.getLoadProb());
                     }
                 } else {
                     // List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
