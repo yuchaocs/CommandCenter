@@ -910,7 +910,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 // 2. QoS is within the stable range, leave it without further actions
                 LOG.info("the QoS is within the stable range, skip current adjusting interval");
                 // overfit_account = 0;
-            } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
+            } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0 && Double.compare(instLatency, 0.6 * QoSTarget) >= 0) {
                 //if(Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                 // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
                 LOG.info("the QoS is overfitted, reduce the power consumption across stages");
