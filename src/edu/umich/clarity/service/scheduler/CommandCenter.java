@@ -345,7 +345,7 @@ public class CommandCenter implements SchedulerService.Iface {
             // regular instances, allow to register
             if (!candidatePortList.contains(hostPort.getPort())) {
                 if (serviceMap.containsKey(appName)) {
-                    double loadProb = 1 / (serviceMap.get(appName).size() + 1);
+                    double loadProb = 1.0 / (serviceMap.get(appName).size() + 1);
                     serviceMap.get(appName).add(serviceInstance);
                     for (ServiceInstance instance : serviceMap.get(appName)) {
                         instance.setLoadProb(loadProb);

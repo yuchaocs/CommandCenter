@@ -29,7 +29,7 @@ public class ServiceInstance {
     public ServiceInstance() {
         this.queuing_latency = new LinkedList<Double>();
         this.serving_latency = new LinkedList<Double>();
-        this.loadProb = 1;
+        this.loadProb = 1.0;
         this.queriesBetweenWithdraw = 0;
         this.queriesBetweenAdjust = 0;
     }
