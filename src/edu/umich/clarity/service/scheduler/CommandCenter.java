@@ -301,7 +301,7 @@ public class CommandCenter implements SchedulerService.Iface {
         int scale = 10000;
         List<Integer> thresHold = new LinkedList<Integer>();
         for (int i = 0; i < service_list.size(); i++) {
-            ServiceInstance instance = service_list.get(i);
+            // ServiceInstance instance = service_list.get(i);
             int sum = 0;
             for (int j = 0; j < i + 1; j++) {
                 sum += service_list.get(j).getLoadProb() * scale;
@@ -394,6 +394,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 // long total_serving = 0;
                 // csvEntry.add(query.getName());
                 serviceCSVEntry.add(query.getName());
+                long totalLatency = 0;
                 for (int i = 0; i < query.getTimestamp().size(); i++) {
                     LatencySpec latencySpec = query.getTimestamp().get(i);
                     long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
@@ -403,9 +404,11 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceCSVEntry.add("" + queuing_time);
                     serviceCSVEntry.add("" + serving_time);
                     serviceCSVEntry.add("" + latencySpec.getInstance_id());
+                    totalLatency += queuing_time + serving_time;
 //                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
 //                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
                 }
+                serviceCSVEntry.add("" + totalLatency);
 //                LOG.info("Query " + query.getName() + ": total queuing "
 //                        + total_queuing + "ms" + " total serving " + total_serving
 //                        + "ms" + " at all stages with total latency "
@@ -745,10 +748,10 @@ public class CommandCenter implements SchedulerService.Iface {
          * 2. adjust the frequency of slowest service instance similar to pegasus
          * 2.1 if the highest frequency is reached, launch a new service instance with middle frequency level
          * 2.2 if the lowest frequency is reached, withdraw the service instance
-         * <p>
+         * <p/>
          * debug log format: serviceLatencyWriter
          * (adjust round, instance_id, current_frequency, query_latency)
-         * <p>
+         * <p/>
          * result log format: queryLatencyWriter
          * (adjust_round, measured_latency, percentile_latency, power_consumption)
          *
@@ -880,7 +883,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 // STAY_BOOSTED = 2;
                 // LOG.info("keep the boosting decision for " + STAY_BOOSTED * ADJUST_QOS_INTERVAL + " ms");
             }*/
-            if (Double.compare(measuredLatency, QoSTarget) > 0 || Double.compare(instLatency, QoSTarget) > 0) {
+            if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 LOG.info("the average or instantaneous QoS is violated, increase the power consumption of the slowest stage");
                 ServiceInstance slowestInstance = serviceInstanceList.get(0);
                 BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency);
@@ -906,18 +909,24 @@ public class CommandCenter implements SchedulerService.Iface {
                         LOG.info("node manager has ran out of service instances, skip current adjustment");
                     }
                 }
-            } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
-                // 2. QoS is within the stable range, leave it without further actions
-                LOG.info("the QoS is within the stable range, skip current adjusting interval");
-                // overfit_account = 0;
-            } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0 && Double.compare(instLatency, 0.6 * QoSTarget) >= 0) {
-                //if(Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
-                // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
-                LOG.info("the QoS is overfitted, reduce the power consumption across stages");
-                powerConserve(serviceInstanceList, false);
-            } else if (Double.compare(instLatency, 0.6 * QoSTarget) < 0) {
-                LOG.info("the QoS is overfitted, reduce the power consumption across stages");
-                powerConserve(serviceInstanceList, true);
+            } else {
+                if (Double.compare(instLatency, 1.35 * QoSTarget) > 0) {
+
+                } else if (Double.compare(instLatency, QoSTarget) > 0) {
+
+                } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
+                    // 2. QoS is within the stable range, leave it without further actions
+                    LOG.info("the QoS is within the stable range, skip current adjusting interval");
+                    // overfit_account = 0;
+                } else if (Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0 && Double.compare(instLatency, 0.6 * QoSTarget) >= 0) {
+                    //if(Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
+                    // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
+                    LOG.info("the QoS is overfitted, moderately reduce the power consumption across stages");
+                    powerConserve(serviceInstanceList, false);
+                } else if (Double.compare(instLatency, 0.6 * QoSTarget) < 0) {
+                    LOG.info("the QoS is overfitted, aggressively reduce the power consumption across stages");
+                    powerConserve(serviceInstanceList, true);
+                }
             }
             /*
             }else {
