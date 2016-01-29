@@ -846,7 +846,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 ServiceInstance instance = serviceInstanceList.get(i);
                 instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort();
                 freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy();
-                loadProb += instance.getServiceType() + "@" + instance.getLoadProb();
+                loadProb += instance.getServiceType() + "@" + dFormat.format(instance.getLoadProb());
                 if (i != serviceInstanceList.size() - 1) {
                     instanceRanking += "-->";
                     freqList += "-->";
