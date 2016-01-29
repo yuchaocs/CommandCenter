@@ -1173,7 +1173,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 LOG.info("launching new service instance " + serviceType + " on " + candidateInstance.getHostPort().getIp() + ":" + candidateInstance.getHostPort().getPort() + " with frequency " + candidateInstance.getCurrentFrequncy() + "GHz");
                 LOG.info("stealed " + stealedQueries + " queries from parent service " + serviceType + " running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
-                LOG.info("updating the load probability of the parent service instance to " + loadProb);
+                LOG.info("updating the load probability of the parent service instance to " + dFormat.format(loadProb));
             } else {
                 LOG.info("The node manager has run out of service instance " + serviceType);
             }
