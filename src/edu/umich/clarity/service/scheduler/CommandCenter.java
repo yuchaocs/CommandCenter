@@ -115,6 +115,8 @@ public class CommandCenter implements SchedulerService.Iface {
 
     private static QuerySpec instantaneousQuery;
 
+    private static ArrayList<ServiceInstance> instantServiceInstanceList;
+
     public CommandCenter() {
         PropertyConfigurator.configure(System.getProperty("user.dir") + File.separator + "log4j.properties");
     }
@@ -861,14 +863,29 @@ public class CommandCenter implements SchedulerService.Iface {
             ServiceInstance slowestInstance = serviceInstanceList.get(0);
             if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
-                serviceBoosting(slowestInstance, measuredLatency, true, true);
+                serviceBoosting(slowestInstance, true, true);
             } else {
+                instantServiceInstanceList = new ArrayList<ServiceInstance>();
+                for (int i = 0; i < instantaneousQuery.getTimestamp().size(); i++) {
+                    LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
+                    String host = latencySpec.getInstance_id().split("_")[1];
+                    int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
+                    for (String stage : serviceMap.keySet()) {
+                        for (ServiceInstance instance : serviceMap.get(stage)) {
+                            if (instance.getHostPort().getIp().equalsIgnoreCase(host) && instance.getHostPort().getPort() == port) {
+                                instantServiceInstanceList.add(instance);
+                            }
+                        }
+                    }
+                }
+                Collections.sort(instantServiceInstanceList, new LatencyComparator("instantaneous"));
+                slowestInstance = instantServiceInstanceList.get(0);
                 if (Double.compare(instLatency, 1.35 * QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, aggressively increase the power consumption of the slowest stage");
-                    serviceBoosting(slowestInstance, measuredLatency, false, true);
+                    serviceBoosting(slowestInstance, false, true);
                 } else if (Double.compare(instLatency, QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, moderately increase the power consumption of the slowest stage");
-                    serviceBoosting(slowestInstance, measuredLatency, false, false);
+                    serviceBoosting(slowestInstance, false, false);
                 } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
                     // 2. QoS is within the stable range, leave it without further actions
                     LOG.info("the QoS is within the stable range, skip current adjusting interval");
@@ -877,17 +894,17 @@ public class CommandCenter implements SchedulerService.Iface {
                     //if(Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) < 0) {
                     // 3. QoS is overfitted, reduce frequency or withdraw instance to save power
                     LOG.info("the QoS is overfitted, moderately reduce the power consumption across stages");
-                    powerConserve(serviceInstanceList, false);
+                    powerConserve(instantaneousQuery, false);
                 } else if (Double.compare(instLatency, 0.6 * QoSTarget) < 0) {
                     LOG.info("the QoS is overfitted, aggressively reduce the power consumption across stages");
-                    powerConserve(serviceInstanceList, true);
+                    powerConserve(instantaneousQuery, true);
                 }
             }
             ADJUST_ROUND++;
         }
 
-        private void serviceBoosting(ServiceInstance slowestInstance, double measuredLatency, boolean avgLatency, boolean aggressive) {
-            BoostDecision decision = predictBoostDecision(slowestInstance, measuredLatency, avgLatency, aggressive);
+        private void serviceBoosting(ServiceInstance slowestInstance, boolean avgLatency, boolean aggressive) {
+            BoostDecision decision = predictBoostDecision(slowestInstance, avgLatency, aggressive);
             if (decision.getDecision().equalsIgnoreCase(BoostDecision.FREQUENCY_BOOST)) {
                 IPAService.Client client = null;
                 double oldFreq = slowestInstance.getCurrentFrequncy();
@@ -916,10 +933,9 @@ public class CommandCenter implements SchedulerService.Iface {
          * Compare the boosting decisions and choose the one that satisfies QoS target while consumes least power.
          *
          * @param instance
-         * @param measuredLatency
          * @return boosting decision (frequency boosting / instance boosting)
          */
-        private BoostDecision predictBoostDecision(ServiceInstance instance, double measuredLatency, boolean avgLatency, boolean aggressive) {
+        private BoostDecision predictBoostDecision(ServiceInstance instance, boolean avgLatency, boolean aggressive) {
             BoostDecision decision = new BoostDecision();
             // Percentile percentile = new Percentile();
             double speedup = 0;
@@ -936,7 +952,28 @@ public class CommandCenter implements SchedulerService.Iface {
                 double frequencyBoostingDelay = 0;
                 double instanceBoostingDelay = 0;
                 int frequencyIndex = 0;
-                ArrayList<Double> latHistList = instQueryHist.get(instance);
+                ArrayList<Double> latHistList = null;
+                if (avgLatency) {
+                    latHistList = instQueryHist.get(instance);
+                } else {
+                    latHistList = new ArrayList<Double>();
+                    for (String stage : sirius_workflow) {
+                        latHistList.add(0.0);
+                    }
+                    for (int i = 0; i < instantaneousQuery.getTimestamp().size(); i++) {
+                        LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
+                        String host = latencySpec.getInstance_id().split("_")[1];
+                        int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
+                        double queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
+                        double serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
+                        if (instance.getHostPort().getIp().equalsIgnoreCase(host) && instance.getHostPort().getPort() == port) {
+                            latHistList.set(0, queuing_time);
+                            latHistList.set(1, serving_time);
+                        } else {
+                            latHistList.set(2, latHistList.get(2) + queuing_time + serving_time);
+                        }
+                    }
+                }
                 if (latHistList != null) {
                     instanceBoostingDelay = latHistList.get(0) / 2.0 + latHistList.get(1) + latHistList.get(2);
                     // 2. predict the latency of frequency boosting
@@ -950,6 +987,14 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                     }
                 }
+
+                if (!aggressive) {
+                    int oldFreqIndex = frequencyIndex;
+                    int diff = (frequencyIndex - freqRangeList.indexOf(instance.getCurrentFrequncy())) / 2;
+                    frequencyIndex = freqRangeList.indexOf(instance.getCurrentFrequncy()) + diff;
+                    LOG.info("moderately increase the frequency from " + instance.getCurrentFrequncy() + " to " + freqRangeList.indexOf(frequencyIndex) + " (instead of " + freqRangeList.indexOf(oldFreqIndex) + ")");
+                }
+
                 // 3. choose the boosting that satisfies the QoS target with least power consumption
                 // otherwise, choose the close to the QoS target
                 LOG.info("predicted QoS with instance boosting is " + dFormat.format(instanceBoostingDelay) + " while with frequency boosting is " + dFormat.format(frequencyBoostingDelay));
@@ -993,32 +1038,29 @@ public class CommandCenter implements SchedulerService.Iface {
         }
 
         /**
-         * Recursively relocating the power budget across the service instances.
+         * Reduce the power consumption of the stage that the query experiences the least delay.
          *
-         * @param serviceInstanceList
+         * @param instantaneousQuery the instantaneous query statistics
+         * @param aggressive         whether to reduce the power aggressively, if not, always reduce the frequency by half
          */
-        private void powerConserve(List<ServiceInstance> serviceInstanceList, boolean aggressive) {
+        private void powerConserve(QuerySpec instantaneousQuery, boolean aggressive) {
             List<ServiceInstance> instanceWithdraw = new LinkedList<ServiceInstance>();
             List<ServiceInstance> instanceReduceFreq = new LinkedList<ServiceInstance>();
             List<Integer> freqTarget = new LinkedList<Integer>();
-            // 1. iterate through the service instances (from fastest to slowest)
-            // 2. if instance is already running at slowest frequency
-            // 2.1 if instance is not the only instance within its stage
-            // 2.1 withdraw the instance if it is not violated the QoS target, otherwise skip current instance
-            // 2.2 reduce the frequency of the instance until it reaches the slowest or violates the QoS
-            ServiceInstance instance = null;
-            // skip the instance already reaches the lowest state
-            for (int index = serviceInstanceList.size() - 1; index > -1; index--) {
-                // for (ServiceInstance instance : serviceInstanceList) {
-                instance = serviceInstanceList.get(index);
-                if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0 && serviceMap.get(instance.getServiceType()).size() == 1) {
-                    continue;
-                } else {
+
+            ServiceInstance fastInstance = null;
+            for (int index = instantServiceInstanceList.size() - 1; index > -1; index--) {
+                ServiceInstance instance = instantServiceInstanceList.get(index);
+                if (freqRangeList.indexOf(instance.getCurrentFrequncy()) > 0 && serviceMap.get(instance.getServiceType()).size() > 1) {
+                    fastInstance = instance;
                     break;
                 }
             }
-            boolean matchFlag = false;
-            // boolean lowestFrequency = false;
+            if (fastInstance == null) {
+                LOG.info("no instance can be slowed down (already at the lowest frequency ) or withdraw (only instance within stage)");
+                return;
+            }
+
             double[] instantaneousQueryStats = {0.0, 0.0, 0.0};
             for (int i = 0; i < instantaneousQuery.getTimestamp().size(); i++) {
                 LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
@@ -1026,103 +1068,48 @@ public class CommandCenter implements SchedulerService.Iface {
                 double serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
                 String host = latencySpec.getInstance_id().split("_")[1];
                 String port = latencySpec.getInstance_id().split("_")[2];
-                if (instance.getHostPort().getIp().equalsIgnoreCase(host) && instance.getHostPort().getPort() == new Integer(port).intValue()) {
+                if (fastInstance.getHostPort().getIp().equalsIgnoreCase(host) && fastInstance.getHostPort().getPort() == new Integer(port).intValue()) {
                     instantaneousQueryStats[0] = queuing_time;
                     instantaneousQueryStats[1] = serving_time;
-                    matchFlag = true;
                 }
                 instantaneousQueryStats[2] += serving_time + serving_time;
             }
-            if (matchFlag) {
-                if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0) {
-                    if (serviceMap.get(instance.getServiceType()).size() > 1) {
-                        // use average latency as metric
-                        double stageLatency = instantaneousQueryStats[0] * 2.0 + instantaneousQueryStats[1] + instantaneousQueryStats[2];
-                        // use instantaneous latency as metric
-                        if (Double.compare(stageLatency, QoSTarget) < 0) {
-                            instanceWithdraw.add(instance);
-                        }
-                    }
-                    // lowestFrequency = true;
-                } else {
-                    // reduce the frequency of the instance without violating the QoS
-                    double currentSpeedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy());
-                    int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1;
-                    for (; originIndex > -1; originIndex--) {
-                        double evalSpeedup = speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
-                        double stageLatency = (instantaneousQueryStats[0] + instantaneousQueryStats[1]) * (evalSpeedup / currentSpeedup) + instantaneousQueryStats[2];
-                        if (Double.compare(stageLatency, QoSTarget) < 0) {
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-                    if (originIndex != freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1) {
-                        if (originIndex < 0) {
-                            originIndex = 0;
-                        }
-                        instanceReduceFreq.add(instance);
-                        freqTarget.add(originIndex);
+            if (freqRangeList.indexOf(fastInstance.getCurrentFrequncy()) == 0) {
+                if (serviceMap.get(fastInstance.getServiceType()).size() > 1) {
+                    // use average latency as metric
+                    double stageLatency = instantaneousQueryStats[0] * 2.0 + instantaneousQueryStats[1] + instantaneousQueryStats[2];
+                    // use instantaneous latency as metric
+                    if (Double.compare(stageLatency, QoSTarget) < 0) {
+                        instanceWithdraw.add(fastInstance);
                     }
                 }
             } else {
-                instanceWithdraw.add(instance);
-            }
-            /*
-            if (instQueryHist.get(instance) != null) {
-                if (freqRangeList.indexOf(instance.getCurrentFrequncy()) == 0) {
-                    if (serviceMap.get(instance.getServiceType()).size() > 1) {
-                        // use average latency as metric
-                        double stageLatency = instQueryHist.get(instance).get(0) * 2.0 + instQueryHist.get(instance).get(1) + instQueryHist.get(instance).get(2);
-                        // use instantaneous latency as metric
-                        if (Double.compare(stageLatency, QoSTarget) < 0) {
-                            instanceWithdraw.add(instance);
-                        }
-                    }
-                } else {
-                    // reduce the frequency of the instance without violating the QoS
-                    double currentSpeedup = speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy());
-                    int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1;
-                    for (; originIndex > -1; originIndex--) {
-                        double evalSpeedup = speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(originIndex));
-                        double stageLatency = (instQueryHist.get(instance).get(0) + instQueryHist.get(instance).get(1)) * (evalSpeedup / currentSpeedup) + instQueryHist.get(instance).get(2);
-                        if (Double.compare(stageLatency, QoSTarget) < 0) {
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-                    if (originIndex != freqRangeList.indexOf(instance.getCurrentFrequncy()) - 1) {
-                        if (originIndex < 0) {
-                            originIndex = 0;
-                        }
-                        instanceReduceFreq.add(instance);
-                        freqTarget.add(originIndex);
+                // reduce the frequency of the instance without violating the QoS
+                double currentSpeedup = speedupSheet.get(fastInstance.getServiceType()).get(fastInstance.getCurrentFrequncy());
+                int originIndex = freqRangeList.indexOf(fastInstance.getCurrentFrequncy()) - 1;
+                for (; originIndex > -1; originIndex--) {
+                    double evalSpeedup = speedupSheet.get(fastInstance.getServiceType()).get(freqRangeList.get(originIndex));
+                    double stageLatency = (instantaneousQueryStats[0] + instantaneousQueryStats[1]) * (evalSpeedup / currentSpeedup) + instantaneousQueryStats[2];
+                    if (Double.compare(stageLatency, QoSTarget) < 0) {
+                        continue;
+                    } else {
+                        break;
                     }
                 }
-            } else {
-                instanceWithdraw.add(instance);
+                if (originIndex != freqRangeList.indexOf(fastInstance.getCurrentFrequncy()) - 1) {
+                    if (originIndex < 0) {
+                        originIndex = 0;
+                    }
+                    instanceReduceFreq.add(fastInstance);
+                    freqTarget.add(originIndex);
+                }
             }
-            */
+
             // perform the power conserve decisions
 
             if (instanceWithdraw.size() != 0) {
                 LOG.info("==================================================");
                 LOG.info("start to withdraw the service instances...");
-                // to be conservative, only process one instance
-                /*
-                for (ServiceInstance instance : instanceWithdraw) {
-                    if (serviceMap.get(instance.getServiceType()).size() > 1) {
-                        withdrawServiceInstance(instance);
-                    }
-                }
-                */
-                    /*
-                    ServiceInstance instance = instanceWithdraw.get(0);
-                    if (serviceMap.get(instance.getServiceType()).size() > 1) {
-                        withdrawServiceInstance(instance);
-                    }
-                    */
                 withdrawServiceInstance(instanceWithdraw.get(0));
             }
             if (instanceReduceFreq.size() != 0) {
@@ -1151,9 +1138,6 @@ public class CommandCenter implements SchedulerService.Iface {
                         ex.printStackTrace();
                     }
                 }
-            }
-            if (instanceWithdraw.size() == 0 && instanceReduceFreq.size() == 0) {
-                LOG.info("no instance can be slowed down (already at the lowest frequency ) or withdraw (only instance within stage)");
             }
         }
 
@@ -1215,92 +1199,6 @@ public class CommandCenter implements SchedulerService.Iface {
             }
             return result;
         }
-
-        ////////////////////////////////////////////////////////////////////////////////////////////
-        // not used
-        ///////////////////////////////////////////////////////////////////////////////////////////
-
-        /**
-         * Recursively relocating the power budget across the service instances.
-         *
-         * @param serviceInstanceList
-         * @param requiredPower
-         */
-        /*
-        private boolean adjustFrequency(List<ServiceInstance> serviceInstanceList, double requiredPower) {
-            boolean success = false;
-            LOG.info("==================================================");
-            LOG.info("start to relocate the power budget...");
-            if (serviceInstanceList.size() != 0) {
-                if (POWER_BUDGET.get().doubleValue() >= requiredPower) {
-                    POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - requiredPower));
-                    LOG.info("global power budget is enough to perform the stage boosting, current global power budget is " + POWER_BUDGET.get().doubleValue());
-                    success = true;
-                } else {
-                    LOG.info("recycling power budget from existing service instances");
-                    LOG.info("the number of existing service instances is " + serviceInstanceList.size() + " and the required power budget is " + requiredPower);
-                    Map<ServiceInstance, Double> adjustInstance = new HashMap<ServiceInstance, Double>();
-                    double sum = 0;
-                    DecimalFormat dFormat = new DecimalFormat("#.#");
-                    for (int i = (serviceInstanceList.size() - 1); i > -1; i--) {
-                        ServiceInstance fastestInstance = serviceInstanceList.get(i);
-                        double fastFreq = fastestInstance.getCurrentFrequncy();
-                        double fastPower = PowerModel.getPowerPerFreq(fastFreq);
-//                        LOG.info("evaluating the service instance " + fastestInstance.getServiceType() + " with current frequency " + fastFreq + " and base power " + fastPower + " and the index of the frequency range is " + freqRangeList.indexOf(fastFreq));
-                        LOG.info("evaluating the service instance " + fastestInstance.getServiceType() + " with current frequency " + fastFreq + " and current power " + fastPower);
-                        for (int j = (freqRangeList.indexOf(fastFreq) - 1); j > -1; j--) {
-                            if ((sum + fastPower - PowerModel.getPowerPerFreq(freqRangeList.get(j)) + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
-                                sum += fastPower - PowerModel.getPowerPerFreq(freqRangeList.get(j));
-                                adjustInstance.put(fastestInstance, freqRangeList.get(j));
-                                break;
-                            }
-                            if (j == 0) {
-                                sum += fastPower - PowerModel.getPowerPerFreq(freqRangeList.get(j));
-                                adjustInstance.put(fastestInstance, freqRangeList.get(j));
-                            }
-                        }
-                        if ((sum + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
-                            break;
-                        }
-                    }
-                    if ((sum + POWER_BUDGET.get().doubleValue()) >= requiredPower) {
-                        if (sum < requiredPower) {
-                            POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() - (requiredPower - sum)));
-                        } else if (sum > requiredPower) {
-                            POWER_BUDGET.set(new Double(POWER_BUDGET.get().doubleValue() + (sum - requiredPower)));
-                        }
-                    } else {
-                        LOG.info("not enough power budget to recycle, keep the current power budget unadjusted...");
-                        adjustInstance.clear();
-                        LOG.info("the global available power budget is " + POWER_BUDGET.get().doubleValue());
-                        return success;
-                    }
-                    // update the global serviceMap and notify the service instance to update their power budget
-                    for (ServiceInstance
-                            keyInstance : adjustInstance.keySet()) {
-                        double oldFreq = keyInstance.getCurrentFrequncy();
-                        keyInstance.setCurrentFrequncy(adjustInstance.get(keyInstance));
-                        try {
-                            TClient clientDelegate = new TClient();
-                            IPAService.Client client = clientDelegate.createIPAClient(keyInstance.getHostPort().getIp(), keyInstance.getHostPort().getPort());
-                            client.updatBudget(adjustInstance.get(keyInstance));
-                            clientDelegate.close();
-                            LOG.info("the frequency of service instance running on " + keyInstance.getHostPort().getIp() + ":" + keyInstance.getHostPort().getPort() + " has been decreased from " + oldFreq + " ---> " + keyInstance.getCurrentFrequncy() + "GHz");
-                        } catch (IOException ex) {
-                            ex.printStackTrace();
-                        } catch (TException ex) {
-                            ex.printStackTrace();
-                        }
-                    }
-                    LOG.info("the global available power budget is " + POWER_BUDGET.get().doubleValue());
-                    success = true;
-                }
-            } else {
-                LOG.info("no service instance available to recycle");
-            }
-            return success;
-        }
-        */
 
         /**
          *
@@ -1377,8 +1275,24 @@ public class CommandCenter implements SchedulerService.Iface {
         @Override
         public int compare(ServiceInstance instance1, ServiceInstance instance2) {
             int compareResult = 0;
-            if (latencyType.equalsIgnoreCase("tail")) {
-                compareResult = Double.compare(instance2.getQueuingTimePercentile(), instance1.getQueuingTimePercentile());
+            if (latencyType.equalsIgnoreCase("instantaneous")) {
+                Double queuingTimeInstant_Instance2 = instance2.getQueuing_latency().get((instance2.getQueuing_latency().size() - 1));
+                Double servingTimeInstant_Instance2 = instance2.getServing_latency().get((instance2.getServing_latency().size() - 1));
+                Double queuingTimeInstant_Instance1 = instance1.getQueuing_latency().get((instance1.getQueuing_latency().size() - 1));
+                Double servingTimeInstant_Instance1 = instance1.getServing_latency().get((instance1.getServing_latency().size() - 1));
+                double estimatedLatency_Instance1 = 0;
+                double estimatedLatency_Instance2 = 0;
+                if (instance1.getCurrentQueueLength() != 0) {
+                    estimatedLatency_Instance1 = instance1.getCurrentQueueLength() * (queuingTimeInstant_Instance1 + servingTimeInstant_Instance1);
+                } else {
+                    estimatedLatency_Instance1 = queuingTimeInstant_Instance1 + servingTimeInstant_Instance1;
+                }
+                if (instance2.getCurrentQueueLength() != 0) {
+                    estimatedLatency_Instance2 = instance2.getCurrentQueueLength() * (queuingTimeInstant_Instance2 + servingTimeInstant_Instance2);
+                } else {
+                    estimatedLatency_Instance2 = queuingTimeInstant_Instance2 + servingTimeInstant_Instance2;
+                }
+                compareResult = Double.compare(estimatedLatency_Instance2, estimatedLatency_Instance1);
             } else if (latencyType.equalsIgnoreCase("average")) {
                 Double queuingTimeAve_Instance2 = instance2.getQueuingTimeAvg();
                 Double servingTimeAve_Instance2 = instance2.getServingTimeAvg();
