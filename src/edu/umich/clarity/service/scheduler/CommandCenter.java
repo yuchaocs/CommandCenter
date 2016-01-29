@@ -921,7 +921,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 LOG.info("adjusting the frequency of service instance " + slowestInstance.getServiceType() + " running on " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort() + " from " + oldFreq + " ---> " + decision.getFrequency());
             } else if (decision.getDecision().equalsIgnoreCase(BoostDecision.INSTANCE_BOOST)) {
-                if (candidateMap.get(slowestInstance.getServiceType()).size() != 0) {
+                if (candidateMap.get(slowestInstance.getServiceType()) != null && candidateMap.get(slowestInstance.getServiceType()).size() != 0) {
                     launchServiceInstance(slowestInstance, decision.getFrequency());
                 } else {
                     LOG.info("node manager has ran out of service instances, skip current adjustment");
@@ -1150,7 +1150,7 @@ public class CommandCenter implements SchedulerService.Iface {
             double loadProb = instance.getLoadProb() / 2.0;
             instance.setLoadProb(loadProb);
             String serviceType = instance.getServiceType();
-            if (candidateMap.get(serviceType).size() != 0) {
+            if (candidateMap.get(serviceType) != null && candidateMap.get(serviceType).size() != 0) {
                 List<ServiceInstance> instanceList = candidateMap.get(serviceType);
                 ServiceInstance candidateInstance = instanceList.get(0);
                 candidateInstance.setServiceType(serviceType);
