@@ -1144,6 +1144,9 @@ public class CommandCenter implements SchedulerService.Iface {
                 LOG.info("no service instance can be powered down without violating the QoS");
                 LOG.info("fastest service instance is " + fastInstance.getServiceType() + " " + fastInstance.getHostPort().getIp() + ":" + fastInstance.getHostPort().getPort());
                 LOG.info("current frequency is " + fastInstance.getCurrentFrequncy());
+                LOG.info("inst asr " + instantaneousQuery.getTimestamp().get(0));
+                LOG.info("inst im " + instantaneousQuery.getTimestamp().get(1));
+                LOG.info("inst qa " + instantaneousQuery.getTimestamp().get(2));
             }
         }
 
