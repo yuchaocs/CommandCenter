@@ -1106,7 +1106,6 @@ public class CommandCenter implements SchedulerService.Iface {
             }
 
             // perform the power conserve decisions
-
             if (instanceWithdraw.size() != 0) {
                 LOG.info("==================================================");
                 LOG.info("start to withdraw the service instances...");
@@ -1120,16 +1119,18 @@ public class CommandCenter implements SchedulerService.Iface {
                     // for (int index = 0; index < 1; index++) {
                     ServiceInstance freqInstance = instanceReduceFreq.get(index);
                     double oldFreq = freqInstance.getCurrentFrequncy();
+                    int destFreqIndex = 0;
                     if (aggressive) {
-                        freqInstance.setCurrentFrequncy(freqRangeList.get(freqTarget.get(index)));
+                        destFreqIndex = freqTarget.get(index);
                     } else {
                         int diff = (freqRangeList.indexOf(oldFreq) - freqTarget.get(index)) / 2;
-                        freqInstance.setCurrentFrequncy(freqRangeList.get(diff + freqTarget.get(index)));
+                        destFreqIndex = diff + freqTarget.get(index);
                     }
+                    freqInstance.setCurrentFrequncy(freqRangeList.get(destFreqIndex));
                     try {
                         TClient clientDelegate = new TClient();
                         IPAService.Client client = clientDelegate.createIPAClient(freqInstance.getHostPort().getIp(), freqInstance.getHostPort().getPort());
-                        client.updatBudget(freqRangeList.get(freqTarget.get(index)));
+                        client.updatBudget(freqRangeList.get(destFreqIndex));
                         clientDelegate.close();
                         LOG.info("the frequency of service instance running on " + freqInstance.getHostPort().getIp() + ":" + freqInstance.getHostPort().getPort() + " has been decreased from " + oldFreq + " ---> " + freqInstance.getCurrentFrequncy() + "GHz");
                     } catch (IOException ex) {
@@ -1138,6 +1139,11 @@ public class CommandCenter implements SchedulerService.Iface {
                         ex.printStackTrace();
                     }
                 }
+            }
+            if (instanceReduceFreq.size() == 0 && instanceWithdraw.size() == 0) {
+                LOG.info("no service instance can be powered down without violating the QoS");
+                LOG.info("fastest service instance is " + fastInstance.getServiceType() + " " + fastInstance.getHostPort().getIp() + ":" + fastInstance.getHostPort().getPort());
+                LOG.info("current frequency is " + fastInstance.getCurrentFrequncy());
             }
         }
 
