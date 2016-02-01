@@ -43,7 +43,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static final double DEFAULT_FREQUENCY = 1.8;
     // private static final int MINIMUM_QUEUE_LENGTH = 3;
 
-    private static final double MAX_PACKAGE_POWER = (14 + 40) / 0.125;
+    private static final double MAX_PACKAGE_POWER = (12 + 55) / 0.125;
     //public static boolean VANILLA_MODE = false;
     public static boolean VANILLA_MODE;
     //private static double GLOBAL_POWER_CONSUMPTION = 9.48 * 3;
@@ -106,7 +106,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static double midThreshold = 0.85;
     // private static double lowerThreshold;
 
-    private static double currentPackagePower = (14 + 40) / 0.125;
+    private static double currentPackagePower = (12 + 55) / 0.125;
     private static int waitRound = 0;
     private static int overfit_account = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
@@ -560,10 +560,11 @@ public class CommandCenter implements SchedulerService.Iface {
                                     instantaneousQuery = query;
                                 }
                                 queryDelayArray[queryNum] = totalLatency - tempLatency;
+                                if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
+                                    end2endQueryLatency.add(totalLatency - tempLatency);
                                 processedResponses++;
                             }
-                            if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
-                                end2endQueryLatency.add(totalLatency);
+
 
                             ArrayList<String> csvEntry = new ArrayList<String>();
                             csvEntry.add("" + ADJUST_ROUND);
@@ -707,28 +708,32 @@ public class CommandCenter implements SchedulerService.Iface {
                         // max power, wait 10 round
                         powerTarget = MAX_PACKAGE_POWER;
                         waitRound = 10;
-                    } else if (Double.compare(instantaneousLatency, 1.35 * QoSTarget) > 0) {
-                        // max power
-                        powerTarget = MAX_PACKAGE_POWER;
-                    } else if (Double.compare(instantaneousLatency, QoSTarget) > 0) {
-                        // increase power by 7%
-                        powerTarget = currentPackagePower * 1.07;
-                        if (powerTarget > MAX_PACKAGE_POWER) {
+                    } else {
+                        if (Double.compare(instantaneousLatency, 1.35 * QoSTarget) > 0) {
+                            // max power
                             powerTarget = MAX_PACKAGE_POWER;
+                        } else if (Double.compare(instantaneousLatency, QoSTarget) > 0) {
+                            // increase power by 7%
+                            powerTarget = ((currentPackagePower * 0.125 - 12) * 1.07 + 12) / 0.125;
+                            if (powerTarget > MAX_PACKAGE_POWER) {
+                                powerTarget = MAX_PACKAGE_POWER;
+                            }
+                        } else if (Double.compare(0.85 * QoSTarget, instantaneousLatency) <= 0 && Double.compare(instantaneousLatency, QoSTarget) <= 0) {
+                            // keep current power
+                            powerTarget = currentPackagePower;
+                        } else if (Double.compare(instantaneousLatency, 0.85 * QoSTarget) < 0) {
+                            // lower power by 1%
+                            powerTarget = ((currentPackagePower * 0.125 - 12) * 0.99 + 12) / 0.125;
+                        } else if (Double.compare(instantaneousLatency, 0.6 * QoSTarget) < 0) {
+                            // lower power by 3%
+                            powerTarget = ((currentPackagePower * 0.125 - 12) * 0.97 + 12) / 0.125;
                         }
-                    } else if (Double.compare(0.85 * QoSTarget, instantaneousLatency) <= 0 && Double.compare(instantaneousLatency, QoSTarget) <= 0) {
-                        // keep current power
-                        powerTarget = currentPackagePower;
-                    } else if (Double.compare(instantaneousLatency, 0.85 * QoSTarget) < 0) {
-                        // lower power by 1%
-                        powerTarget = currentPackagePower * 0.99;
-                    } else if (Double.compare(instantaneousLatency, 0.6 * QoSTarget) < 0) {
-                        // lower power by 3%
-                        powerTarget = currentPackagePower * 0.97;
                     }
+                    /*
                     if (Double.compare(powerTarget, ((40 + 5) / 0.125)) < 0) {
                         powerTarget = (40 + 5) / 0.125;
                     }
+                    */
                     currentPackagePower = powerTarget;
                     // enforce the power target
                     String command = "sudo ./writeRAPL " + Math.round(powerTarget);
@@ -739,7 +744,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 ArrayList<String> csvEntry = new ArrayList<String>();
                 csvEntry.add("" + ADJUST_ROUND);
                 csvEntry.add("" + avgLatency);
-                csvEntry.add("" + (currentPackagePower * 0.125 - 40));
+                csvEntry.add("" + (currentPackagePower * 0.125 - 12) * 2);
                 pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 try {
                     pegasusPowerWriter.flush();
