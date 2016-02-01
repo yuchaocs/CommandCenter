@@ -43,7 +43,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static final double DEFAULT_FREQUENCY = 1.8;
     // private static final int MINIMUM_QUEUE_LENGTH = 3;
 
-    private static final double MAX_PACKAGE_POWER = (12 + 52) / 0.125;
+    private static final double MAX_PACKAGE_POWER = (12 + 40) / 0.125;
     //public static boolean VANILLA_MODE = false;
     public static boolean VANILLA_MODE;
     //private static double GLOBAL_POWER_CONSUMPTION = 9.48 * 3;
@@ -106,7 +106,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static double midThreshold = 0.85;
     // private static double lowerThreshold;
 
-    private static double currentPackagePower = (12 + 52) / 0.125;
+    private static double currentPackagePower = (12 + 40) / 0.125;
     private static int waitRound = 0;
     private static int overfit_account = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
