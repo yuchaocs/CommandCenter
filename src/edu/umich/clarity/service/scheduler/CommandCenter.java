@@ -43,7 +43,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static final double DEFAULT_FREQUENCY = 1.8;
     // private static final int MINIMUM_QUEUE_LENGTH = 3;
 
-    private static final double MAX_PACKAGE_POWER = 12 + 52;
+    private static final double MAX_PACKAGE_POWER = (1.5 + 8.5) / 0.125;
     //public static boolean VANILLA_MODE = false;
     public static boolean VANILLA_MODE;
     //private static double GLOBAL_POWER_CONSUMPTION = 9.48 * 3;
@@ -106,7 +106,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static double midThreshold = 0.85;
     // private static double lowerThreshold;
 
-    private static double currentPackagePower = 12 + 52;
+    private static double currentPackagePower = (1.5 + 8.5) / 0.125;
     private static int waitRound = 0;
     private static int overfit_account = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
@@ -717,8 +717,8 @@ public class CommandCenter implements SchedulerService.Iface {
                             LOG.info("change to the max power " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, QoSTarget) > 0) {
                             // increase power by 7%
-                            // powerTarget = ((currentPackagePower * 0.125 - 12) * 1.07 + 12) / 0.125;
-                            powerTarget = (currentPackagePower - 12) * 1.07 + 12;
+                            powerTarget = ((currentPackagePower * 0.125 - 1.5) * 1.07 + 1.5) / 0.125;
+                            // powerTarget = (currentPackagePower - 12) * 1.07 + 12;
                             if (powerTarget > MAX_PACKAGE_POWER) {
                                 powerTarget = MAX_PACKAGE_POWER;
                             }
@@ -729,11 +729,13 @@ public class CommandCenter implements SchedulerService.Iface {
                             LOG.info("stay for the current power " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, 0.85 * QoSTarget) < 0) {
                             // lower power by 1%
-                            powerTarget = (currentPackagePower - 12) * 0.99 + 12;
+                            // powerTarget = (currentPackagePower - 12) * 0.99 + 12;
+                            powerTarget = ((currentPackagePower * 0.125 - 1.5) * 0.99 + 1.5) / 0.125;
                             LOG.info("reduce the power by 1% to " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, 0.6 * QoSTarget) < 0) {
                             // lower power by 3%
-                            powerTarget = (currentPackagePower - 12) * 0.97 + 12;
+                            // powerTarget = (currentPackagePower - 12) * 0.97 + 12;
+                            powerTarget = ((currentPackagePower * 0.125 - 1.5) * 0.97 + 1.5) / 0.125;
                             LOG.info("reduce the power by 3% to " + powerTarget);
                         }
                     }
@@ -753,7 +755,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 ArrayList<String> csvEntry = new ArrayList<String>();
                 csvEntry.add("" + ADJUST_ROUND);
                 csvEntry.add("" + avgLatency);
-                csvEntry.add("" + (currentPackagePower - 12) * 2);
+                csvEntry.add("" + (currentPackagePower * 0.125 - 1.5) * 2);
                 pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 try {
                     pegasusPowerWriter.flush();
