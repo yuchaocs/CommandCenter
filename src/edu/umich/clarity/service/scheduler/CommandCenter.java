@@ -1072,7 +1072,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     instantaneousQueryStats[0] = queuing_time;
                     instantaneousQueryStats[1] = serving_time;
                 }
-                instantaneousQueryStats[2] += serving_time + serving_time;
+                instantaneousQueryStats[2] += queuing_time + serving_time;
             }
             if (freqRangeList.indexOf(fastInstance.getCurrentFrequncy()) == 0) {
                 if (serviceMap.get(fastInstance.getServiceType()).size() > 1) {
