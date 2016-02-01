@@ -43,7 +43,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static final double DEFAULT_FREQUENCY = 1.8;
     // private static final int MINIMUM_QUEUE_LENGTH = 3;
 
-    private static final double MAX_PACKAGE_POWER = (12 + 55) / 0.125;
+    private static final double MAX_PACKAGE_POWER = (12 + 52) / 0.125;
     //public static boolean VANILLA_MODE = false;
     public static boolean VANILLA_MODE;
     //private static double GLOBAL_POWER_CONSUMPTION = 9.48 * 3;
@@ -106,7 +106,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static double midThreshold = 0.85;
     // private static double lowerThreshold;
 
-    private static double currentPackagePower = (12 + 55) / 0.125;
+    private static double currentPackagePower = (12 + 52) / 0.125;
     private static int waitRound = 0;
     private static int overfit_account = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
@@ -702,31 +702,38 @@ public class CommandCenter implements SchedulerService.Iface {
                     avgLatency += end2endLatency;
                 }
                 avgLatency = avgLatency / end2endQueryLatency.size();
+                LOG.info("avg latency: " + avgLatency + " and QoS latency: " + QoSTarget);
                 if (waitRound == 0) {
                     double powerTarget = 0;
                     if (Double.compare(avgLatency, QoSTarget) > 0) {
                         // max power, wait 10 round
                         powerTarget = MAX_PACKAGE_POWER;
                         waitRound = 10;
+                        LOG.info("change to the max power " + powerTarget + " and stay for " + waitRound + " rounds");
                     } else {
                         if (Double.compare(instantaneousLatency, 1.35 * QoSTarget) > 0) {
                             // max power
                             powerTarget = MAX_PACKAGE_POWER;
+                            LOG.info("change to the max power " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, QoSTarget) > 0) {
                             // increase power by 7%
                             powerTarget = ((currentPackagePower * 0.125 - 12) * 1.07 + 12) / 0.125;
                             if (powerTarget > MAX_PACKAGE_POWER) {
                                 powerTarget = MAX_PACKAGE_POWER;
                             }
+                            LOG.info("increase the power by 7% to " + powerTarget);
                         } else if (Double.compare(0.85 * QoSTarget, instantaneousLatency) <= 0 && Double.compare(instantaneousLatency, QoSTarget) <= 0) {
                             // keep current power
                             powerTarget = currentPackagePower;
+                            LOG.info("stay for the current power " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, 0.85 * QoSTarget) < 0) {
                             // lower power by 1%
                             powerTarget = ((currentPackagePower * 0.125 - 12) * 0.99 + 12) / 0.125;
+                            LOG.info("reduce the power by 1% to " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, 0.6 * QoSTarget) < 0) {
                             // lower power by 3%
                             powerTarget = ((currentPackagePower * 0.125 - 12) * 0.97 + 12) / 0.125;
+                            LOG.info("reduce the power by 3% to " + powerTarget);
                         }
                     }
                     /*
@@ -739,6 +746,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     String command = "sudo ./writeRAPL " + Math.round(powerTarget);
                     execSystemCommand(command);
                 } else {
+                    LOG.info("wait for " + waitRound + " rounds before next adjustment");
                     waitRound--;
                 }
                 ArrayList<String> csvEntry = new ArrayList<String>();
@@ -751,7 +759,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-                LOG.info("change the pp0 power to " + currentPackagePower + "watts");
+                LOG.info("change the pp0 power to " + currentPackagePower + " watts");
             } else {
                 LOG.info("no query has been returned in the previous interval");
             }
