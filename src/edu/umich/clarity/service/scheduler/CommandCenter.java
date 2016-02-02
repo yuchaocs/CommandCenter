@@ -717,7 +717,7 @@ public class CommandCenter implements SchedulerService.Iface {
                             LOG.info("change to the max power " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, QoSTarget) > 0) {
                             // increase power by 7%
-                            powerTarget = ((currentPackagePower * 0.125 - 1.5) * 1.07 + 1.5) / 0.125;
+                            powerTarget = ((currentPackagePower * 0.125 - 14) * 1.07 + 14) / 0.125;
                             // powerTarget = (currentPackagePower - 12) * 1.07 + 12;
                             if (powerTarget > MAX_PACKAGE_POWER) {
                                 powerTarget = MAX_PACKAGE_POWER;
@@ -730,12 +730,12 @@ public class CommandCenter implements SchedulerService.Iface {
                         } else if (Double.compare(instantaneousLatency, 0.85 * QoSTarget) < 0) {
                             // lower power by 1%
                             // powerTarget = (currentPackagePower - 12) * 0.99 + 12;
-                            powerTarget = ((currentPackagePower * 0.125 - 1.5) * 0.99 + 1.5) / 0.125;
+                            powerTarget = ((currentPackagePower * 0.125 - 14) * 0.99 + 14) / 0.125;
                             LOG.info("reduce the power by 1% to " + powerTarget);
                         } else if (Double.compare(instantaneousLatency, 0.6 * QoSTarget) < 0) {
                             // lower power by 3%
                             // powerTarget = (currentPackagePower - 12) * 0.97 + 12;
-                            powerTarget = ((currentPackagePower * 0.125 - 1.5) * 0.97 + 1.5) / 0.125;
+                            powerTarget = ((currentPackagePower * 0.125 - 14) * 0.97 + 14) / 0.125;
                             LOG.info("reduce the power by 3% to " + powerTarget);
                         }
                     }
@@ -755,7 +755,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 ArrayList<String> csvEntry = new ArrayList<String>();
                 csvEntry.add("" + ADJUST_ROUND);
                 csvEntry.add("" + avgLatency);
-                csvEntry.add("" + (currentPackagePower * 0.125 - 1.5) * 2);
+                csvEntry.add("" + (currentPackagePower * 0.125 - 14) * 2);
                 pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 try {
                     pegasusPowerWriter.flush();
