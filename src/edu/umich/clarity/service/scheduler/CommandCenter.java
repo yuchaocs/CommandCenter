@@ -44,10 +44,10 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static final int MINIMUM_QUEUE_LENGTH = 3;
 
 
-    private static final double PEGASUS_STATIC_POWER = 12;
-    private static final double PEGASUS_DYNAMIC_POWER = 40;
+    private static double PEGASUS_STATIC_POWER = 12;
+    private static double PEGASUS_DYNAMIC_POWER = 40;
 
-    private static final double MAX_PACKAGE_POWER = (PEGASUS_STATIC_POWER + PEGASUS_DYNAMIC_POWER) / 0.125;
+    private static double MAX_PACKAGE_POWER;
     //public static boolean VANILLA_MODE = false;
     public static boolean VANILLA_MODE;
     //private static double GLOBAL_POWER_CONSUMPTION = 9.48 * 3;
@@ -110,7 +110,7 @@ public class CommandCenter implements SchedulerService.Iface {
     // private static double midThreshold = 0.85;
     // private static double lowerThreshold;
 
-    private static double currentPackagePower = MAX_PACKAGE_POWER;
+    private static double currentPackagePower;
     private static int waitRound = 0;
     private static int overfit_account = 0;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
@@ -157,8 +157,10 @@ public class CommandCenter implements SchedulerService.Iface {
                 WITHDRAW_SERVICE_INSTANCE = false;
             }
             */
-            // upperThreshold = Double.valueOf(args[11]);
-            // midThreshold = Double.valueOf(args[12]);
+            PEGASUS_STATIC_POWER = Double.valueOf(args[11]);
+            PEGASUS_DYNAMIC_POWER = Double.valueOf(args[12]);
+            MAX_PACKAGE_POWER = (PEGASUS_STATIC_POWER + PEGASUS_DYNAMIC_POWER) / 0.125;
+            currentPackagePower = MAX_PACKAGE_POWER;
             // lowerThreshold = Double.valueOf(args[13]);
             LOG.info("the command center is running in " + args[7] + " mode, with " + BOOSTING_DECISION + " boosting decision");
             LOG.info("QoS target is " + QoSTarget + ", with latency percentile " + LATENCY_PERCENTILE + "%");
