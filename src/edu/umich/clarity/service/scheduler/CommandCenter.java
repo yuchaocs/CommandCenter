@@ -133,7 +133,7 @@ public class CommandCenter implements SchedulerService.Iface {
      */
     public static void main(String[] args) throws IOException {
         CommandCenter commandCenter = new CommandCenter();
-        if (args.length == 11) {
+        if (args.length == 13) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
             ADJUST_QOS_INTERVAL = Integer.valueOf(args[1]);
             WARMUP_COUNT = Integer.valueOf(args[3]);
