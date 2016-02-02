@@ -701,6 +701,7 @@ public class CommandCenter implements SchedulerService.Iface {
          * This method re-implements the pegasus paper control logic
          */
         private void performPegasus() {
+            LOG.info("==================================================");
             if (end2endQueryLatency.size() != 0) {
                 double instantaneousLatency = end2endQueryLatency.get(end2endQueryLatency.size() - 1);
                 double avgLatency = 0;
@@ -760,8 +761,8 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 ArrayList<String> csvEntry = new ArrayList<String>();
                 csvEntry.add("" + ADJUST_ROUND);
-                csvEntry.add("" + avgLatency);
-                csvEntry.add("" + (currentPackagePower * 0.125 - PEGASUS_STATIC_POWER) * 2);
+                csvEntry.add("" + dFormat.format(avgLatency));
+                csvEntry.add("" + dFormat.format((currentPackagePower * 0.125 - PEGASUS_STATIC_POWER) * 2));
                 pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 try {
                     pegasusPowerWriter.flush();
