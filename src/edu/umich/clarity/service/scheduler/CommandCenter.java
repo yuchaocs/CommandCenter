@@ -112,7 +112,7 @@ public class CommandCenter implements SchedulerService.Iface {
 
     private static double currentPackagePower;
     private static int waitRound = 0;
-    private static int overfit_account = 0;
+    private static int TARGET_RESPONSE_NUM;
     // private static boolean WITHDRAW_SERVICE_INSTANCE = false;
     private BlockingQueue<QuerySpec> finishedQueryQueue = new LinkedBlockingQueue<QuerySpec>();
     // private static int STAY_BOOSTED = 0;
@@ -133,7 +133,7 @@ public class CommandCenter implements SchedulerService.Iface {
      */
     public static void main(String[] args) throws IOException {
         CommandCenter commandCenter = new CommandCenter();
-        if (args.length == 13) {
+        if (args.length == 14) {
             SCHEDULER_PORT = Integer.valueOf(args[0]);
             ADJUST_QOS_INTERVAL = Integer.valueOf(args[1]);
             WARMUP_COUNT = Integer.valueOf(args[3]);
@@ -160,6 +160,7 @@ public class CommandCenter implements SchedulerService.Iface {
             PEGASUS_STATIC_POWER = Double.valueOf(args[11]);
             PEGASUS_DYNAMIC_POWER = Double.valueOf(args[12]);
             MAX_PACKAGE_POWER = (PEGASUS_STATIC_POWER + PEGASUS_DYNAMIC_POWER) / 0.125;
+            TARGET_RESPONSE_NUM = Integer.valueOf(args[13]);
             currentPackagePower = MAX_PACKAGE_POWER;
             // lowerThreshold = Double.valueOf(args[13]);
             LOG.info("the command center is running in " + args[7] + " mode, with " + BOOSTING_DECISION + " boosting decision");
@@ -474,7 +475,7 @@ public class CommandCenter implements SchedulerService.Iface {
         @Override
         public void run() {
             LOG.info("starting the helper thread for adjusting power budget across stages");
-            while (processedResponses < 1000) {
+            while (processedResponses < TARGET_RESPONSE_NUM) {
                 if (warmupCount.get() > WARMUP_COUNT) {
                     try {
                         LOG.info("==================================================");
@@ -656,7 +657,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                 }
             }
-            LOG.info("1000 responses have been received, shutting down the command center");
+            LOG.info(TARGET_RESPONSE_NUM + " responses have been received, shutting down the command center");
         }
 
 //        private void withdrawServiceInstance() {
