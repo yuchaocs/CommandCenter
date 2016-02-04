@@ -402,9 +402,6 @@ public class CommandCenter implements SchedulerService.Iface {
                  */
                 // ArrayList<String> csvEntry = new ArrayList<String>();
                 ArrayList<String> serviceCSVEntry = new ArrayList<String>();
-                // long total_queuing = 0;
-                // long total_serving = 0;
-                // csvEntry.add(query.getName());
                 serviceCSVEntry.add(query.getName());
                 long totalLatency = 0;
                 for (int i = 0; i < query.getTimestamp().size(); i++) {
@@ -417,40 +414,11 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceCSVEntry.add("" + serving_time);
                     serviceCSVEntry.add("" + latencySpec.getInstance_id());
                     totalLatency += queuing_time + serving_time;
-//                    LOG.info("Query " + query.getName() + ": queuing time " + queuing_time
-//                            + "ms," + " serving time " + serving_time + "ms" + " running on " + latencySpec.getInstance_id());
                 }
                 serviceCSVEntry.add("" + totalLatency);
-//                LOG.info("Query " + query.getName() + ": total queuing "
-//                        + total_queuing + "ms" + " total serving " + total_serving
-//                        + "ms" + " at all stages with total latency "
-//                        + (total_queuing + total_serving) + "ms");
-                // csvEntry.add("" + total_queuing);
-                // csvEntry.add("" + total_serving);
                 serviceLatencyWriter.writeNext(serviceCSVEntry.toArray(new String[serviceCSVEntry.size()]));
                 serviceLatencyWriter.flush();
-                // queryLatencyWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
-                // queryLatencyWriter.flush();
-                /*
-                if (warmupCount.get() % 1000 == 0) {
-                     LOG.info("1000 responses have been received, ");
-                }
-                */
             }
-            /*
-            if (warmupCount.get() == WARMUP_COUNT) {
-                initialAdjustTimestamp = System.currentTimeMillis();
-                // initialPegasusTimestamp = initialAdjustTimestamp;
-                LOG.info("starting to processing the queries at " + initialAdjustTimestamp);
-                for (Map.Entry<String, List<ServiceInstance>> entry : serviceMap.entrySet()) {
-                    for (ServiceInstance instance : entry.getValue()) {
-                        String instanceId = instance.getServiceType() + "_" + instance.getHostPort().getIp() + "_" + instance.getHostPort().getPort();
-                        frequencyStat.put(instanceId, instance.getCurrentFrequncy());
-                        instance.setRenewTimestamp(initialAdjustTimestamp);
-                    }
-                }
-            }
-            */
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -909,7 +877,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceBoosting(slowestInstance, false, true);
                 } else if (Double.compare(instLatency, QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, moderately increase the power consumption of the slowest stage");
-                    serviceBoosting(slowestInstance, false, true);
+                    serviceBoosting(slowestInstance, false, false);
                 } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
                     // 2. QoS is within the stable range, leave it without further actions
                     LOG.info("the QoS is within the stable range, skip current adjusting interval");
@@ -921,7 +889,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     powerConserve(instantaneousQuery, false);
                 } else if (Double.compare(instLatency, 0.6 * QoSTarget) < 0) {
                     LOG.info("the QoS is overfitted, aggressively reduce the power consumption across stages");
-                    powerConserve(instantaneousQuery, false);
+                    powerConserve(instantaneousQuery, true);
                 }
             }
             ADJUST_ROUND++;
