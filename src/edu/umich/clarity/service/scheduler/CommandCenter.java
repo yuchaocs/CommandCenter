@@ -909,7 +909,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceBoosting(slowestInstance, false, true);
                 } else if (Double.compare(instLatency, QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, moderately increase the power consumption of the slowest stage");
-                    serviceBoosting(slowestInstance, false, false);
+                    serviceBoosting(slowestInstance, false, true);
                 } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
                     // 2. QoS is within the stable range, leave it without further actions
                     LOG.info("the QoS is within the stable range, skip current adjusting interval");
@@ -921,7 +921,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     powerConserve(instantaneousQuery, false);
                 } else if (Double.compare(instLatency, 0.6 * QoSTarget) < 0) {
                     LOG.info("the QoS is overfitted, aggressively reduce the power consumption across stages");
-                    powerConserve(instantaneousQuery, true);
+                    powerConserve(instantaneousQuery, false);
                 }
             }
             ADJUST_ROUND++;
