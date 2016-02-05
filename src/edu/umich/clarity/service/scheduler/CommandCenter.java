@@ -132,6 +132,8 @@ public class CommandCenter implements SchedulerService.Iface {
 
     private static long EXP_START_TIME;
 
+    private static boolean INIT_TIMER = true;
+
     private static boolean actionPerformed = true;
 
     public CommandCenter() {
@@ -276,7 +278,6 @@ public class CommandCenter implements SchedulerService.Iface {
         // LOG.info("the global power consumption is " + POWER_BUDGET.get().doubleValue());
         LOG.info("current workflow within command center is " + workflow);
         //LOG.info("launching the power budget managing thread with adjusting interval per " + ADJUST_QOS_INTERVAL + " queries and recycling interval per " + WITHDRAW_BUDGET_INTERVAL + " queries");
-        EXP_START_TIME = System.currentTimeMillis();
         if (!VANILLA_MODE)
             new Thread(new powerBudgetAdjustRunnable()).start();
         // new Thread(new budgetAdjusterRunnable()).start();
@@ -466,6 +467,10 @@ public class CommandCenter implements SchedulerService.Iface {
             LinkedList<QuerySpec> queryList = null;
             while (processedResponses < TARGET_RESPONSE_NUM) {
                 if (warmupCount.get() > WARMUP_COUNT) {
+                    if (INIT_TIMER) {
+                        EXP_START_TIME = System.currentTimeMillis();
+                        INIT_TIMER = false;
+                    }
                     try {
                         // LOG.info("sleep for " + ADJUST_QOS_INTERVAL + " ms before performing QoS management");
                         // Thread.sleep(ADJUST_QOS_INTERVAL);
