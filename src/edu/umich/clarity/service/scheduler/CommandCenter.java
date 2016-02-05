@@ -181,7 +181,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("the command center is running in " + args[7] + " mode, with " + BOOSTING_DECISION + " boosting decision");
             LOG.info("QoS target is " + QoSTarget + ", with latency percentile " + LATENCY_PERCENTILE + "%");
             LOG.info("adjust interval is " + ADJUST_QOS_INTERVAL + ", with adjust threshold " + ADJUST_THRESHOLD);
-            LOG.info("the length of moving window is " + QoSTarget * MOVING_WINDOW_LENGTH + " ms, with skip period " + SKIP_QUERY_NUM * QoSTarget + " ms");
+            LOG.info("the length of moving window is " + MOVING_WINDOW_LENGTH + ", with skipping length " + SKIP_QUERY_NUM);
         }
         SchedulerService.Processor<SchedulerService.Iface> processor = new SchedulerService.Processor<SchedulerService.Iface>(
                 commandCenter);
@@ -459,6 +459,7 @@ public class CommandCenter implements SchedulerService.Iface {
          */
         @Override
         public void run() {
+            LOG.info("==================================================");
             LOG.info("starting the helper thread for adjusting power budget across stages");
             int query_counter = 0;
             LinkedList<QuerySpec> tempQueryQueue = new LinkedList<QuerySpec>();
@@ -466,7 +467,6 @@ public class CommandCenter implements SchedulerService.Iface {
             while (processedResponses < TARGET_RESPONSE_NUM) {
                 if (warmupCount.get() > WARMUP_COUNT) {
                     try {
-                        LOG.info("==================================================");
                         // LOG.info("sleep for " + ADJUST_QOS_INTERVAL + " ms before performing QoS management");
                         // Thread.sleep(ADJUST_QOS_INTERVAL);
                         // long totalLatency = 0;
@@ -651,7 +651,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 } else {
                     // LOG.info("warming up the application before entering the management mode");
                     try {
-                        Thread.sleep(ADJUST_QOS_INTERVAL);
+                        Thread.sleep(1000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
