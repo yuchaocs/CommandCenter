@@ -473,6 +473,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         if (skip_counter == 0) {
                             if (query_counter < MOVING_WINDOW_LENGTH) {
                                 QuerySpec query = finishedQueryQueue.take();
+                                processedResponses++;
                                 tempQueryQueue.add(query);
                                 queryList = new LinkedList<QuerySpec>();
                                 queryList.add(query);
@@ -570,7 +571,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                     ArrayList<String> csvEntry = new ArrayList<String>();
                                     csvEntry.add("" + ADJUST_ROUND);
                                     csvEntry.add("" + (System.currentTimeMillis() - EXP_START_TIME));
-                                    csvEntry.add("" + GLOBAL_POWER_CONSUMPTION);
+                                    csvEntry.add("" + dFormat.format(GLOBAL_POWER_CONSUMPTION));
                                     powerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                                     try {
                                         powerWriter.flush();
@@ -625,6 +626,7 @@ public class CommandCenter implements SchedulerService.Iface {
                             LOG.info(skip_counter + " queries need to be skipped before next adjustment");
                             skip_counter--;
                             QuerySpec query = finishedQueryQueue.take();
+                            processedResponses++;
                             tempQueryQueue.add(query);
                             if (skip_counter % MOVING_WINDOW_LENGTH == 0 && skip_counter != 0) {
                                 double tempLatency = 0;
@@ -649,7 +651,6 @@ public class CommandCenter implements SchedulerService.Iface {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    processedResponses++;
                 } else {
                     // LOG.info("warming up the application before entering the management mode");
                     try {
@@ -899,6 +900,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 Collections.sort(instantServiceInstanceList, new LatencyComparator("instantaneous"));
                 slowestInstance = instantServiceInstanceList.get(0);
+                LOG.info("the slowest service instance is " + slowestInstance.getServiceType() + " " + slowestInstance.getHostPort().getIp() + ":" + slowestInstance.getHostPort().getPort());
                 if (Double.compare(instLatency, 1.35 * QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, aggressively increase the power consumption of the slowest stage");
                     serviceBoosting(slowestInstance, false, true);
