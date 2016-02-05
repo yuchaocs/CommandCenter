@@ -547,7 +547,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                     queryDelayArray[queryNum] = totalLatency - tempLatency;
                                     if (BOOSTING_DECISION.equalsIgnoreCase(BoostDecision.PEGASUS_BOOST))
                                         end2endQueryLatency.add(totalLatency - tempLatency);
-                                    processedResponses++;
+                                    // processedResponses++;
                                 }
                                 if (query_counter == MOVING_WINDOW_LENGTH) {
                                     ArrayList<String> csvEntry = new ArrayList<String>();
@@ -624,7 +624,6 @@ public class CommandCenter implements SchedulerService.Iface {
                         } else {
                             LOG.info(skip_counter + " queries need to be skipped before next adjustment");
                             skip_counter--;
-                            processedResponses++;
                             QuerySpec query = finishedQueryQueue.take();
                             tempQueryQueue.add(query);
                             if (skip_counter % MOVING_WINDOW_LENGTH == 0 && skip_counter != 0) {
@@ -650,6 +649,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
+                    processedResponses++;
                 } else {
                     // LOG.info("warming up the application before entering the management mode");
                     try {
