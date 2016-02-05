@@ -622,6 +622,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                     end2endQueryLatency.clear();
                             }
                         } else {
+                            LOG.info(skip_counter + " queries need to be skipped before next adjustment");
                             skip_counter--;
                             QuerySpec query = finishedQueryQueue.take();
                             tempQueryQueue.add(query);
