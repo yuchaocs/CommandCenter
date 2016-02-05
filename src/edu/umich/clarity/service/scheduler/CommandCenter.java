@@ -624,6 +624,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         } else {
                             LOG.info(skip_counter + " queries need to be skipped before next adjustment");
                             skip_counter--;
+                            processedResponses++;
                             QuerySpec query = finishedQueryQueue.take();
                             tempQueryQueue.add(query);
                             if (skip_counter % MOVING_WINDOW_LENGTH == 0 && skip_counter != 0) {
@@ -788,94 +789,96 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("==================================================");
             LOG.info("adjust the power budget...");
             LOG.info("ranking the service instance based on the estimated delay((avg_queuing_time + avg_serving_time)*queue_length)");
-            List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
             boolean performAction = true;
-            // double currentPowerConsumption = 0;
-            for (String serviceType : serviceMap.keySet()) {
-                for (ServiceInstance instance : serviceMap.get(serviceType)) {
-                    // double estimatedLatency = 0;
-                    // currentPowerConsumption += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
-                    if (instance.getQueuing_latency().size() != 0) {
-                        int start_index = instance.getServing_latency().size() - instance.getQueriesBetweenAdjust();
-                        //LOG.info("start index of the query list " + start_index);
-                        //start_index = start_index > -1 ? start_index : 0;
-                        List<Double> servingLatencyStatistic = instance.getServing_latency().subList(start_index, instance.getServing_latency().size());
-                        List<Double> queuingLatencyStatistic = instance.getQueuing_latency().subList(start_index, instance.getServing_latency().size());
-                        // double servingPercentileValue = 0;
-                        // double queuingPercentileValue = 0;
-                        if (queuingLatencyStatistic.size() != 0) {
-                            int statLength = queuingLatencyStatistic.size();
-                            // double[] evaluateServingArray = new double[statLength];
-                            // double[] evaluateQueuingArray = new double[statLength];
-                            double totalQueuing = 0;
-                            double totalServing = 0;
-                            for (int i = 0; i < statLength; i++) {
-                                // evaluateServingArray[i] = servingLatencyStatistic.get(i).doubleValue();
-                                // evaluateQueuingArray[i] = queuingLatencyStatistic.get(i).doubleValue();
-                                totalServing += servingLatencyStatistic.get(i).doubleValue();
-                                totalQueuing += queuingLatencyStatistic.get(i).doubleValue();
+            ServiceInstance slowestInstance = null;
+            if (Double.compare(measuredLatency, 0) > 0) {
+                List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
+                // double currentPowerConsumption = 0;
+                for (String serviceType : serviceMap.keySet()) {
+                    for (ServiceInstance instance : serviceMap.get(serviceType)) {
+                        // double estimatedLatency = 0;
+                        // currentPowerConsumption += PowerModel.getPowerPerFreq(instance.getCurrentFrequncy());
+                        if (instance.getQueuing_latency().size() != 0) {
+                            int start_index = instance.getServing_latency().size() - instance.getQueriesBetweenAdjust();
+                            //LOG.info("start index of the query list " + start_index);
+                            //start_index = start_index > -1 ? start_index : 0;
+                            List<Double> servingLatencyStatistic = instance.getServing_latency().subList(start_index, instance.getServing_latency().size());
+                            List<Double> queuingLatencyStatistic = instance.getQueuing_latency().subList(start_index, instance.getServing_latency().size());
+                            // double servingPercentileValue = 0;
+                            // double queuingPercentileValue = 0;
+                            if (queuingLatencyStatistic.size() != 0) {
+                                int statLength = queuingLatencyStatistic.size();
+                                // double[] evaluateServingArray = new double[statLength];
+                                // double[] evaluateQueuingArray = new double[statLength];
+                                double totalQueuing = 0;
+                                double totalServing = 0;
+                                for (int i = 0; i < statLength; i++) {
+                                    // evaluateServingArray[i] = servingLatencyStatistic.get(i).doubleValue();
+                                    // evaluateQueuingArray[i] = queuingLatencyStatistic.get(i).doubleValue();
+                                    totalServing += servingLatencyStatistic.get(i).doubleValue();
+                                    totalQueuing += queuingLatencyStatistic.get(i).doubleValue();
+                                }
+                                TClient clientDelegate = new TClient();
+                                int currentQueueLength = 0;
+                                try {
+                                    IPAService.Client serviceClient = clientDelegate.createIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
+                                    currentQueueLength = serviceClient.reportQueueLength();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                } catch (TException e) {
+                                    e.printStackTrace();
+                                }
+                                clientDelegate.close();
+                                instance.setCurrentQueueLength(currentQueueLength);
+                                instance.setQueuingTimeAvg(totalQueuing / statLength);
+                                instance.setServingTimeAvg(totalServing / statLength);
+                                LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
+                                LOG.info("average queuing time: " + dFormat.format(instance.getQueuingTimeAvg()) + "; average serving time: " + dFormat.format((totalServing / statLength)) + "; current queue length: " + currentQueueLength);
+                            } else {
+                                instance.setQueuingTimeAvg(0);
+                                instance.setCurrentQueueLength(0);
+                                instance.setServingTimeAvg(0);
+                                // instance.setServingTimePercentile(0);
+                                // instance.setQueuingTimePercentile(0);
+                                LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries during last adjust interval");
                             }
-                            TClient clientDelegate = new TClient();
-                            int currentQueueLength = 0;
-                            try {
-                                IPAService.Client serviceClient = clientDelegate.createIPAClient(instance.getHostPort().getIp(), instance.getHostPort().getPort());
-                                currentQueueLength = serviceClient.reportQueueLength();
-                            } catch (IOException e) {
-                                e.printStackTrace();
-                            } catch (TException e) {
-                                e.printStackTrace();
-                            }
-                            clientDelegate.close();
-                            instance.setCurrentQueueLength(currentQueueLength);
-                            instance.setQueuingTimeAvg(totalQueuing / statLength);
-                            instance.setServingTimeAvg(totalServing / statLength);
-                            LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
-                            LOG.info("average queuing time: " + dFormat.format(instance.getQueuingTimeAvg()) + "; average serving time: " + dFormat.format((totalServing / statLength)) + "; current queue length: " + currentQueueLength);
                         } else {
                             instance.setQueuingTimeAvg(0);
                             instance.setCurrentQueueLength(0);
                             instance.setServingTimeAvg(0);
                             // instance.setServingTimePercentile(0);
                             // instance.setQueuingTimePercentile(0);
-                            LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries during last adjust interval");
+                            LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries after it is started");
                         }
-                    } else {
-                        instance.setQueuingTimeAvg(0);
-                        instance.setCurrentQueueLength(0);
-                        instance.setServingTimeAvg(0);
-                        // instance.setServingTimePercentile(0);
-                        // instance.setQueuingTimePercentile(0);
-                        LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " received 0 queries after it is started");
+                    }
+                    serviceInstanceList.addAll(serviceMap.get(serviceType));
+                }
+                LOG.info("adjust round " + ADJUST_ROUND + ":" + " the measured avgerage and percentile latency is " + dFormat.format(measuredLatency) + " and " + dFormat.format(percentile));
+                LOG.info("==================================================");
+                // sort the service instance based on the 99th queuing latency
+                Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
+                String instanceRanking = "";
+                String freqList = "";
+                String loadProb = "";
+                for (int i = 0; i < serviceInstanceList.size(); i++) {
+                    ServiceInstance instance = serviceInstanceList.get(i);
+                    instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort();
+                    freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy();
+                    loadProb += instance.getServiceType() + "@" + dFormat.format(instance.getLoadProb());
+                    if (i != serviceInstanceList.size() - 1) {
+                        instanceRanking += "-->";
+                        freqList += "-->";
+                        loadProb += "-->";
                     }
                 }
-                serviceInstanceList.addAll(serviceMap.get(serviceType));
+                LOG.info("service instance ranking from slowest to fastest");
+                LOG.info(instanceRanking);
+                LOG.info(freqList);
+                LOG.info(loadProb);
+                slowestInstance = serviceInstanceList.get(0);
             }
-            LOG.info("adjust round " + ADJUST_ROUND + ":" + " the measured avgerage and percentile latency is " + dFormat.format(measuredLatency) + " and " + dFormat.format(percentile));
-            LOG.info("==================================================");
-            // sort the service instance based on the 99th queuing latency
-            Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
-            String instanceRanking = "";
-            String freqList = "";
-            String loadProb = "";
-            for (int i = 0; i < serviceInstanceList.size(); i++) {
-                ServiceInstance instance = serviceInstanceList.get(i);
-                instanceRanking += instance.getServiceType() + "@" + instance.getHostPort().getPort();
-                freqList += instance.getServiceType() + "@" + instance.getCurrentFrequncy();
-                loadProb += instance.getServiceType() + "@" + dFormat.format(instance.getLoadProb());
-                if (i != serviceInstanceList.size() - 1) {
-                    instanceRanking += "-->";
-                    freqList += "-->";
-                    loadProb += "-->";
-                }
-            }
-            LOG.info("service instance ranking from slowest to fastest");
-            LOG.info(instanceRanking);
-            LOG.info(freqList);
-            LOG.info(loadProb);
-
             LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + ", instantaneous latency QoS is " + instLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
-            ServiceInstance slowestInstance = serviceInstanceList.get(0);
             if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 skip_counter = SKIP_QUERY_NUM;
                 LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
@@ -901,7 +904,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceBoosting(slowestInstance, false, true);
                 } else if (Double.compare(instLatency, QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, moderately increase the power consumption of the slowest stage");
-                    serviceBoosting(slowestInstance, false, false);
+                    serviceBoosting(slowestInstance, false, true);
                 } else if (Double.compare(instLatency, QoSTarget) <= 0 && Double.compare(instLatency, ADJUST_THRESHOLD * QoSTarget) >= 0) {
                     // 2. QoS is within the stable range, leave it without further actions
                     LOG.info("the QoS is within the stable range, skip current adjusting interval");
@@ -914,7 +917,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     powerConserve(instantaneousQuery, false);
                 } else if (Double.compare(instLatency, 0.6 * QoSTarget) < 0) {
                     LOG.info("the QoS is overfitted, aggressively reduce the power consumption across stages");
-                    powerConserve(instantaneousQuery, true);
+                    powerConserve(instantaneousQuery, false);
                 }
             }
             actionPerformed = performAction;
