@@ -731,7 +731,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 ArrayList<String> csvEntry = new ArrayList<String>();
                 csvEntry.add("" + ADJUST_ROUND);
                 csvEntry.add("" + dFormat.format(avgLatency));
-                csvEntry.add("" + dFormat.format(currentPackagePower * 0.125));
+                csvEntry.add("" + dFormat.format(currentPackagePower * 0.125 * 2));
                 pegasusPowerWriter.writeNext(csvEntry.toArray(new String[csvEntry.size()]));
                 try {
                     pegasusPowerWriter.flush();
