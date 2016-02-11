@@ -208,13 +208,22 @@ public class CommandCenter implements SchedulerService.Iface {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        for (int i = 9079; i < 9080; i++) {
+        // power saving settings
+        //for (int i = 9079; i < 9080; i++) {
+        // scale up settings
+        for (int i = 9071; i < 9080; i++) {
             candidatePortList.add(i);
         }
-        for (int i = 9089; i < 9090; i++) {
+        // power saving settings
+        //for (int i = 9089; i < 9090; i++) {
+        // scale up settings
+        for (int i = 9081; i < 9090; i++) {
             candidatePortList.add(i);
         }
-        for (int i = 9099; i < 9100; i++) {
+        // power saving settings
+        //for (int i = 9099; i < 9100; i++) {
+        // scale up settings
+        for (int i = 9091; i < 9100; i++) {
             candidatePortList.add(i);
         }
         // POWER_BUDGET.set(GLOBAL_POWER_CONSUMPTION);
