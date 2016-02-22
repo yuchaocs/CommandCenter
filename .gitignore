@@ -3,3 +3,5 @@
 .idea/
 # class files
 out/
+# jar files
+commandcenter.jar

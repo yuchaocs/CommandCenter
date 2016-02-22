@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project basedir="." default="build" name="CommandCenter">
+    <property environment="env"/>
+    <property name="debuglevel" value="source,lines,vars"/>
+    <property name="target" value="1.7"/>
+    <property name="source" value="1.7"/>
+    <path id="CommandCenter.classpath">
+        <pathelement location="bin"/>
+	<pathelement location="lib/commons-codec-1.6.jar"/>
+	<pathelement location="lib/commons-logging-1.1.1.jar"/>
+	<pathelement location="lib/commons-math3-3.5.jar"/>
+	<pathelement location="lib/httpclient-4.2.5.jar"/>
+	<pathelement location="lib/httpcore-4.2.4.jar"/>
+	<pathelement location="lib/junit-4.4.jar"/>
+	<pathelement location="lib/libthrift-0.9.2.jar"/>
+	<pathelement location="lib/log4j-1.2.14.jar"/>
+	<pathelement location="lib/opencsv-3.4.jar"/>
+	<pathelement location="lib/servlet-api-2.5.jar"/>
+	<pathelement location="lib/slf4j-api-1.5.8.jar"/>
+	<pathelement location="lib/slf4j-log4j12-1.5.8.jar"/>
+    </path>
+    <target depends="clean" name="init">
+        <mkdir dir="bin"/>
+        <copy includeemptydirs="false" todir="bin">
+            <fileset dir="src">
+                <exclude name="**/*.java"/>
+            </fileset>
+        </copy>
+    </target>
+    <target name="clean">
+        <delete dir="bin"/>
+    </target>
+    <target depends="init" name="build">
+        <echo message="${ant.project.name}: ${ant.file}"/>
+        <javac debug="true" debuglevel="${debuglevel}" includeantruntime="false" destdir="bin" source="${source}" target="${target}">
+            <src path="src"/>
+            <classpath refid="CommandCenter.classpath"/>
+        </javac>
+    </target>
+    <target depends="build" name="jar-cc">
+	<jar destfile="commandcenter.jar" basedir="${basedir}/bin">
+	<zipgroupfileset dir="lib" includes="*.jar" />
+	<manifest>
+		<attribute name="Main-Class" value="edu.umich.clarity.service.scheduler.CommandCenter"/>
+	</manifest>
+	</jar>
+    </target>
+    <target depends="build" name="jar-sc">
+	<jar destfile="stressclient.jar" basedir="${basedir}/bin">
+	<zipgroupfileset dir="lib" includes="*.jar" />
+	<manifest>
+		<attribute name="Main-Class" value="edu.umich.clarity.service.StressClient"/>
+	</manifest>
+	</jar>
+    </target>
+</project>
