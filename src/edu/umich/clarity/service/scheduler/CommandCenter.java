@@ -211,21 +211,27 @@ public class CommandCenter implements SchedulerService.Iface {
         // power saving settings
         //for (int i = 9079; i < 9080; i++) {
         // scale up settings
+        /*
         for (int i = 9071; i < 9080; i++) {
             candidatePortList.add(i);
         }
+        */
         // power saving settings
         //for (int i = 9089; i < 9090; i++) {
         // scale up settings
+        /*
         for (int i = 9081; i < 9090; i++) {
             candidatePortList.add(i);
         }
+        */
         // power saving settings
         //for (int i = 9099; i < 9100; i++) {
         // scale up settings
+        /*
         for (int i = 9091; i < 9100; i++) {
             candidatePortList.add(i);
         }
+        */
         // POWER_BUDGET.set(GLOBAL_POWER_CONSUMPTION);
 
         String[] nextLine;
@@ -412,8 +418,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 // ArrayList<String> csvEntry = new ArrayList<String>();
                 ArrayList<String> serviceCSVEntry = new ArrayList<String>();
                 serviceCSVEntry.add(query.getName());
-                long totalLatency = 0;
-                for (int i = 0; i < query.getTimestamp().size(); i++) {
+                for (int i = 0; i < query.getTimestamp().size() - 1; i++) {
                     LatencySpec latencySpec = query.getTimestamp().get(i);
                     long queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
                     // total_queuing += queuing_time;
@@ -422,8 +427,10 @@ public class CommandCenter implements SchedulerService.Iface {
                     serviceCSVEntry.add("" + queuing_time);
                     serviceCSVEntry.add("" + serving_time);
                     serviceCSVEntry.add("" + latencySpec.getInstance_id());
-                    totalLatency += queuing_time + serving_time;
+                    // totalLatency += queuing_time + serving_time;
                 }
+                LatencySpec latencySpec = query.getTimestamp().get(query.getTimestamp().size() - 1);
+                long totalLatency = latencySpec.getServing_end_time();
                 serviceCSVEntry.add("" + totalLatency);
                 serviceLatencyWriter.writeNext(serviceCSVEntry.toArray(new String[serviceCSVEntry.size()]));
                 serviceLatencyWriter.flush();
