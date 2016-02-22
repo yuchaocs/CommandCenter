@@ -875,7 +875,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 serviceBoosting(slowestInstance, true, true);
             } else {
                 instantServiceInstanceList = new ArrayList<ServiceInstance>();
-                for (int i = 0; i < instantaneousQuery.getTimestamp().size(); i++) {
+                for (int i = 0; i < instantaneousQuery.getTimestamp().size() - 1; i++) {
                     LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
                     String host = latencySpec.getInstance_id().split("_")[1];
                     int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
@@ -969,7 +969,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     for (String stage : sirius_workflow) {
                         latHistList.add(0.0);
                     }
-                    for (int i = 0; i < instantaneousQuery.getTimestamp().size(); i++) {
+                    for (int i = 0; i < instantaneousQuery.getTimestamp().size() - 1; i++) {
                         LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
                         String host = latencySpec.getInstance_id().split("_")[1];
                         int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
@@ -1072,7 +1072,7 @@ public class CommandCenter implements SchedulerService.Iface {
             }
 
             double[] instantaneousQueryStats = {0.0, 0.0, 0.0};
-            for (int i = 0; i < instantaneousQuery.getTimestamp().size(); i++) {
+            for (int i = 0; i < instantaneousQuery.getTimestamp().size() - 1; i++) {
                 LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
                 double queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
                 double serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
