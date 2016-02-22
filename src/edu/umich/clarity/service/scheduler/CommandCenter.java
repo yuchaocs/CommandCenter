@@ -634,7 +634,7 @@ public class CommandCenter implements SchedulerService.Iface {
                         e.printStackTrace();
                     }
                 } else {
-                    LOG.info("warming up the application before entering the management mode");
+                    // LOG.info("warming up the application before entering the management mode");
                     try {
                         Thread.sleep(ADJUST_QOS_INTERVAL * 2);
                     } catch (InterruptedException e) {
