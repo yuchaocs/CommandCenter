@@ -1060,7 +1060,8 @@ public class CommandCenter implements SchedulerService.Iface {
             ServiceInstance fastInstance = null;
             for (int index = instantServiceInstanceList.size() - 1; index > -1; index--) {
                 ServiceInstance instance = instantServiceInstanceList.get(index);
-                if (freqRangeList.indexOf(instance.getCurrentFrequncy()) > 0 && serviceMap.get(instance.getServiceType()).size() > 1) {
+                //if (freqRangeList.indexOf(instance.getCurrentFrequncy()) > 0 && serviceMap.get(instance.getServiceType()).size() > 1) {
+                if (freqRangeList.indexOf(instance.getCurrentFrequncy()) > 0) {
                     fastInstance = instance;
                     break;
                 }
