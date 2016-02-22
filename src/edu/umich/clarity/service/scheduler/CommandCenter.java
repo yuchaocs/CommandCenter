@@ -477,11 +477,11 @@ public class CommandCenter implements SchedulerService.Iface {
                             for (int queryNum = 0; queryNum < finishedQueueSize; queryNum++) {
                                 QuerySpec query = finishedQueryQueue.take();
                                 double tempLatency = totalLatency;
-                                for (int i = 0; i < query.getTimestamp().size(); i++) {
+                                for (int i = 0; i < query.getTimestamp().size() - 1; i++) {
                                     LatencySpec latencySpec = query.getTimestamp().get(i);
                                     double queuing_time = latencySpec.getServing_start_time() - latencySpec.getQueuing_start_time();
                                     double serving_time = latencySpec.getServing_end_time() - latencySpec.getServing_start_time();
-                                    totalLatency += queuing_time + serving_time;
+                                    // totalLatency += queuing_time + serving_time;
                                     totalQueuingTime += queuing_time;
                                     totalServingTime += serving_time;
                                     String serviceType = latencySpec.getInstance_id().split("_")[0];
@@ -547,6 +547,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                         }
                                     }
                                 }
+                                totalLatency += query.getTimestamp().get(query.getTimestamp().size() - 1).getServing_end_time();
                                 if (queryNum == finishedQueueSize - 1) {
                                     instantaneousQuery = query;
                                 }
