@@ -4,6 +4,6 @@ git pull
 
 ant jar-cc
 
-cp commandcenter.jar ~/mulage_project/commandcenter
+cp commandcenter.jar ~/nutch-test/commandcenter
 
-echo "generated jar file copied to ~/mulage_project/commandcenter"
+echo "generated jar file copied to ~/nutch-test/commandcenter"
