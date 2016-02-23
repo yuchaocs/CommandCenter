@@ -660,7 +660,9 @@ public class CommandCenter implements SchedulerService.Iface {
         private void withdrawServiceInstance(ServiceInstance instance) {
 
             // shutdown the service instance and relinquish the gobal power budget
-
+            String appName = instance.getServiceType();
+            LOG.info("withdrawing the service instance type " + instance.getServiceType());
+            LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
             List<ServiceInstance> serviceInstanceList = serviceMap.get(instance.getServiceType());
             // double allocatedFreq = instance.getCurrentFrequncy();
             serviceInstanceList.remove(instance);
@@ -679,7 +681,15 @@ public class CommandCenter implements SchedulerService.Iface {
             instance.getServing_latency().clear();
             // instance.setQueriesBetweenWithdraw(0);
             instance.setQueriesBetweenAdjust(0);
-            candidateMap.get(instance.getServiceType()).add(instance);
+            if (candidateMap.containsKey(appName)) {
+                candidateMap.get(appName).add(instance);
+            } else {
+                // List<ServiceInstance> serviceInstanceList = new CopyOnWriteArrayList<ServiceInstance>();
+                List<ServiceInstance> instanceList = new LinkedList<ServiceInstance>();
+                instanceList.add(instance);
+                candidateMap.put(appName, instanceList);
+            }
+            // candidateMap.get(instance.getServiceType()).add(instance);
             LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
             // LOG.info("the current global power consumption is " + POWER_BUDGET.get().doubleValue());
             // LOG.info("==================================================");
