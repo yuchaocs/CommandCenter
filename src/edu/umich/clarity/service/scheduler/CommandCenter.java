@@ -1069,17 +1069,27 @@ public class CommandCenter implements SchedulerService.Iface {
             List<Integer> freqTarget = new LinkedList<Integer>();
 
             ServiceInstance fastInstance = null;
+            ServiceInstance tempInstance = null;
             for (int index = instantServiceInstanceList.size() - 1; index > -1; index--) {
                 ServiceInstance instance = instantServiceInstanceList.get(index);
-                //if (freqRangeList.indexOf(instance.getCurrentFrequncy()) > 0 && serviceMap.get(instance.getServiceType()).size() > 1) {
                 if (freqRangeList.indexOf(instance.getCurrentFrequncy()) > 0) {
                     fastInstance = instance;
                     break;
+                }else{
+                    if(serviceMap.get(instance.getServiceType()).size() > 1){
+                        if(tempInstance == null){
+                            tempInstance = instance;
+                        }
+                    }
                 }
             }
             if (fastInstance == null) {
-                LOG.info("no instance can be slowed down (already at the lowest frequency ) or withdraw (only instance within stage)");
-                return;
+                if(tempInstance == null) {
+                    LOG.info("no instance can be slowed down (already at the lowest frequency ) or withdraw (only instance within stage)");
+                    return;
+                }else{
+                    fastInstance = tempInstance;
+                }
             }
 
             double[] instantaneousQueryStats = {0.0, 0.0, 0.0};
