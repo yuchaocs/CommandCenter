@@ -879,8 +879,8 @@ public class CommandCenter implements SchedulerService.Iface {
                     LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
                     String host = latencySpec.getInstance_id().split("_")[1];
                     int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
-                    LOG.info("instantaneous instance ip " + host);
-                    LOG.info("instantaneous instance port " + port);
+                    // LOG.info("instantaneous instance ip " + host);
+                    // LOG.info("instantaneous instance port " + port);
                     for (String stage : serviceMap.keySet()) {
                         for (ServiceInstance instance : serviceMap.get(stage)) {
                             if (instance.getHostPort().getIp().equalsIgnoreCase(host) && instance.getHostPort().getPort() == port) {
@@ -889,10 +889,10 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                     }
                 }
-                LOG.info("sorting the instances for instantaneous latency for size " + instantServiceInstanceList.size());
+                // LOG.info("sorting the instances for instantaneous latency for size " + instantServiceInstanceList.size());
                 Collections.sort(instantServiceInstanceList, new LatencyComparator("instantaneous"));
                 slowestInstance = instantServiceInstanceList.get(0);
-                LOG.info("slowest instance for instantaneous is " + slowestInstance.getHostPort().getPort());
+                LOG.info("slowest instantaneous instance for is " + slowestInstance.getHostPort().getPort());
                 if (Double.compare(instLatency, 1.35 * QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, aggressively increase the power consumption of the slowest stage");
                     serviceBoosting(slowestInstance, false, true);
@@ -954,8 +954,10 @@ public class CommandCenter implements SchedulerService.Iface {
             double speedup = 0;
 
             double stageQoSTarget = QoSTarget;
-
+            LOG.info("predict the boosting decision");
+            LOG.info("the frequency of the slowest instance is " + instance.getCurrentFrequncy());
             int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy());
+            LOG.info("the frequency index is " + instance.getCurrentFrequncy());
             // already reach the max frequency, launch a new instance
             if (originIndex == freqRangeList.size() - 1) {
                 decision.setDecision(BoostDecision.INSTANCE_BOOST);
