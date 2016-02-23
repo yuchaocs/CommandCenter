@@ -870,27 +870,19 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + ", instantaneous latency QoS is " + instLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
             ServiceInstance slowestInstance = serviceInstanceList.get(0);
-            LOG.info("slowest instance for average is " + slowestInstance.getHostPort().getPort());
             if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
                 serviceBoosting(slowestInstance, true, true);
             } else {
                 instantServiceInstanceList = new ArrayList<ServiceInstance>();
-                if(instantaneousQuery != null) {
-                    LOG.info("size of leaf nodes for instantaneous query " + instantaneousQuery.getTimestamp().size());
-                }
                 for (int i = 0; i < instantaneousQuery.getTimestamp().size() - 1; i++) {
                     LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
                     String host = latencySpec.getInstance_id().split("_")[1];
                     int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
+                    LOG.info("instantaneous instance ip " + host);
+                    LOG.info("instantaneous instance port " + port);
                     for (String stage : serviceMap.keySet()) {
-                        LOG.info("stage " + stage);
-                        LOG.info("number of live leaf nodes " + serviceMap.get(stage).size());
                         for (ServiceInstance instance : serviceMap.get(stage)) {
-                            LOG.info("live instance ip " + instance.getHostPort().getIp());
-                            LOG.info("instantaneous instance ip " + host);
-                            LOG.info("live instance port " + instance.getHostPort().getPort());
-                            LOG.info("instantaneous instance port " + port);
                             if (instance.getHostPort().getIp().equalsIgnoreCase(host) && instance.getHostPort().getPort() == port) {
                                 instantServiceInstanceList.add(instance);
                             }
