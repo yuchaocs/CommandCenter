@@ -664,10 +664,12 @@ public class CommandCenter implements SchedulerService.Iface {
             List<ServiceInstance> serviceInstanceList = serviceMap.get(instance.getServiceType());
             // double allocatedFreq = instance.getCurrentFrequncy();
             serviceInstanceList.remove(instance);
+            /*
             double incrementalProb = instance.getLoadProb() / serviceInstanceList.size();
             for (int i = 0; i < serviceInstanceList.size(); i++) {
                 serviceInstanceList.get(i).setLoadProb(serviceInstanceList.get(i).getLoadProb() + incrementalProb);
             }
+            */
 
             // Collections.sort(serviceInstanceList, new LatencyComparator(LATENCY_TYPE));
             // ServiceInstance fastestInstance = serviceInstanceList.get(serviceInstanceList.size() - 1);
