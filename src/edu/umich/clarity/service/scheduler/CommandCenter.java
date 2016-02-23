@@ -865,7 +865,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("service instance ranking from slowest to fastest");
             LOG.info(instanceRanking);
             LOG.info(freqList);
-            LOG.info(loadProb);
+            // LOG.info(loadProb);
 
             LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + ", instantaneous latency QoS is " + instLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
@@ -957,7 +957,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("predict the boosting decision");
             LOG.info("the frequency of the slowest instance is " + instance.getCurrentFrequncy());
             int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy());
-            LOG.info("the frequency index is " + instance.getCurrentFrequncy());
+            LOG.info("the frequency index is " + originIndex);
             // already reach the max frequency, launch a new instance
             if (originIndex == freqRangeList.size() - 1) {
                 decision.setDecision(BoostDecision.INSTANCE_BOOST);
@@ -972,7 +972,7 @@ public class CommandCenter implements SchedulerService.Iface {
                     latHistList = instQueryHist.get(instance);
                 } else {
                     latHistList = new ArrayList<Double>();
-                    for (String stage : sirius_workflow) {
+                    for (int i = 0; i < 3; i++) {
                         latHistList.add(0.0);
                     }
                     for (int i = 0; i < instantaneousQuery.getTimestamp().size() - 1; i++) {
@@ -990,13 +990,15 @@ public class CommandCenter implements SchedulerService.Iface {
                     }
                 }
                 if (latHistList != null) {
-                    instanceBoostingDelay = latHistList.get(0) / 2.0 + latHistList.get(1) + latHistList.get(2);
+                    //instanceBoostingDelay = latHistList.get(0) / 2.0 + latHistList.get(1) + latHistList.get(2);
+                    instanceBoostingDelay = latHistList.get(0) / 2.0 + latHistList.get(1);
                     // 2. predict the latency of frequency boosting
                     for (int index = originIndex + 1; index < freqRangeList.size(); index++) {
                         frequencyIndex = index;
                         // frequencyBoostingDelay = 0;
                         speedup = speedupSheet.get(instance.getServiceType()).get(freqRangeList.get(index)) / speedupSheet.get(instance.getServiceType()).get(instance.getCurrentFrequncy());
-                        frequencyBoostingDelay = (latHistList.get(0) + latHistList.get(1)) * speedup + latHistList.get(2);
+                        // frequencyBoostingDelay = (latHistList.get(0) + latHistList.get(1)) * speedup + latHistList.get(2);
+                        frequencyBoostingDelay = (latHistList.get(0) + latHistList.get(1)) * speedup;
                         if (frequencyBoostingDelay < stageQoSTarget) {
                             break;
                         }
