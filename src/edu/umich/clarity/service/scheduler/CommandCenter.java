@@ -876,13 +876,21 @@ public class CommandCenter implements SchedulerService.Iface {
                 serviceBoosting(slowestInstance, true, true);
             } else {
                 instantServiceInstanceList = new ArrayList<ServiceInstance>();
+                if(instantaneousQuery != null) {
+                    LOG.info("size of leaf nodes for instantaneous query " + instantaneousQuery.getTimestamp().size());
+                }
                 for (int i = 0; i < instantaneousQuery.getTimestamp().size() - 1; i++) {
                     LatencySpec latencySpec = instantaneousQuery.getTimestamp().get(i);
                     String host = latencySpec.getInstance_id().split("_")[1];
                     int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
                     for (String stage : serviceMap.keySet()) {
+                        LOG.info("number of live leaf nodes " + serviceMap.get(stage).size());
                         for (ServiceInstance instance : serviceMap.get(stage)) {
                             if (instance.getHostPort().getIp().equalsIgnoreCase(host) && instance.getHostPort().getPort() == port) {
+                                LOG.info("live instance ip " + instance.getHostPort().getIp());
+                                LOG.info("instantaneous instance ip " + host);
+                                LOG.info("live instance port " + instance.getHostPort().getPort());
+                                LOG.info("instantaneous instance port " + port);
                                 instantServiceInstanceList.add(instance);
                             }
                         }
