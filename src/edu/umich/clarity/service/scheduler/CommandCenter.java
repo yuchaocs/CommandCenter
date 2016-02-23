@@ -870,6 +870,7 @@ public class CommandCenter implements SchedulerService.Iface {
             LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + ", instantaneous latency QoS is " + instLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
             ServiceInstance slowestInstance = serviceInstanceList.get(0);
+            LOG.info("slowest instance for average is " + slowestInstance.getHostPort().getPort());
             if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
                 serviceBoosting(slowestInstance, true, true);
@@ -887,8 +888,10 @@ public class CommandCenter implements SchedulerService.Iface {
                         }
                     }
                 }
+                LOG.info("sorting the instances for instantaneous latency for size " + instantServiceInstanceList.size());
                 Collections.sort(instantServiceInstanceList, new LatencyComparator("instantaneous"));
                 slowestInstance = instantServiceInstanceList.get(0);
+                LOG.info("slowest instance for instantaneous is " + slowestInstance.getHostPort().getPort());
                 if (Double.compare(instLatency, 1.35 * QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, aggressively increase the power consumption of the slowest stage");
                     serviceBoosting(slowestInstance, false, true);
