@@ -1095,7 +1095,8 @@ public class CommandCenter implements SchedulerService.Iface {
             if (freqRangeList.indexOf(fastInstance.getCurrentFrequncy()) == 0) {
                 if (serviceMap.get(fastInstance.getServiceType()).size() > 1) {
                     // use average latency as metric
-                    double stageLatency = instantaneousQueryStats[0] * 2.0 + instantaneousQueryStats[1] + instantaneousQueryStats[2];
+                    //double stageLatency = instantaneousQueryStats[0] * 2.0 + instantaneousQueryStats[1] + instantaneousQueryStats[2];
+                    double stageLatency = instantaneousQueryStats[0] * 2.0 + instantaneousQueryStats[1];
                     // use instantaneous latency as metric
                     if (Double.compare(stageLatency, QoSTarget) < 0) {
                         instanceWithdraw.add(fastInstance);
@@ -1107,7 +1108,8 @@ public class CommandCenter implements SchedulerService.Iface {
                 int originIndex = freqRangeList.indexOf(fastInstance.getCurrentFrequncy()) - 1;
                 for (; originIndex > -1; originIndex--) {
                     double evalSpeedup = speedupSheet.get(fastInstance.getServiceType()).get(freqRangeList.get(originIndex));
-                    double stageLatency = (instantaneousQueryStats[0] + instantaneousQueryStats[1]) * (evalSpeedup / currentSpeedup) + instantaneousQueryStats[2];
+                    //double stageLatency = (instantaneousQueryStats[0] + instantaneousQueryStats[1]) * (evalSpeedup / currentSpeedup) + instantaneousQueryStats[2];
+                    double stageLatency = (instantaneousQueryStats[0] + instantaneousQueryStats[1]) * (evalSpeedup / currentSpeedup);
                     if (Double.compare(stageLatency, QoSTarget) < 0) {
                         continue;
                     } else {
@@ -1164,7 +1166,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 LOG.info("current frequency is " + fastInstance.getCurrentFrequncy());
                 LOG.info("inst queuing " + instantaneousQueryStats[0]);
                 LOG.info("inst serving " + instantaneousQueryStats[1]);
-                LOG.info("inst other " + instantaneousQueryStats[2]);
+                // LOG.info("inst other " + instantaneousQueryStats[2]);
             }
         }
 
