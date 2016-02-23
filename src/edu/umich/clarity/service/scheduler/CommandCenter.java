@@ -884,13 +884,14 @@ public class CommandCenter implements SchedulerService.Iface {
                     String host = latencySpec.getInstance_id().split("_")[1];
                     int port = new Integer(latencySpec.getInstance_id().split("_")[2]).intValue();
                     for (String stage : serviceMap.keySet()) {
+                        LOG.info("stage " + stage);
                         LOG.info("number of live leaf nodes " + serviceMap.get(stage).size());
                         for (ServiceInstance instance : serviceMap.get(stage)) {
+                            LOG.info("live instance ip " + instance.getHostPort().getIp());
+                            LOG.info("instantaneous instance ip " + host);
+                            LOG.info("live instance port " + instance.getHostPort().getPort());
+                            LOG.info("instantaneous instance port " + port);
                             if (instance.getHostPort().getIp().equalsIgnoreCase(host) && instance.getHostPort().getPort() == port) {
-                                LOG.info("live instance ip " + instance.getHostPort().getIp());
-                                LOG.info("instantaneous instance ip " + host);
-                                LOG.info("live instance port " + instance.getHostPort().getPort());
-                                LOG.info("instantaneous instance port " + port);
                                 instantServiceInstanceList.add(instance);
                             }
                         }
