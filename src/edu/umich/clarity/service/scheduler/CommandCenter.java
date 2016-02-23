@@ -584,7 +584,7 @@ public class CommandCenter implements SchedulerService.Iface {
                                     powerCSVEntry.add("" + histInstance.getCurrentFrequncy());
                                     powerCSVEntry.add("" + dFormat.format(PowerModel.getPowerPerFreq(histInstance.getCurrentFrequncy())));
                                     powerWriter.writeNext(powerCSVEntry.toArray(new String[powerCSVEntry.size()]));
-                                    LOG.info("history instance: " + histInstance.getHostPort().getIp() + ":" + histInstance.getHostPort().getPort());
+                                    //LOG.info("history instance: " + histInstance.getHostPort().getIp() + ":" + histInstance.getHostPort().getPort());
                                 }
                                 stageCSVEntry.add("" + ADJUST_ROUND);
                                 stageCSVEntry.add("" + stage);
@@ -782,7 +782,7 @@ public class CommandCenter implements SchedulerService.Iface {
          * @param instLatency
          */
         private void performMulage(double measuredLatency, double instLatency, double percentile) {
-            LOG.info("==================================================");
+            //LOG.info("==================================================");
             LOG.info("adjust the power budget...");
             LOG.info("ranking the service instance based on the estimated delay((avg_queuing_time + avg_serving_time)*queue_length)");
             List<ServiceInstance> serviceInstanceList = new LinkedList<ServiceInstance>();
