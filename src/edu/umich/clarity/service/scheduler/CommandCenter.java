@@ -825,8 +825,9 @@ public class CommandCenter implements SchedulerService.Iface {
                             instance.setCurrentQueueLength(currentQueueLength);
                             instance.setQueuingTimeAvg(totalQueuing / statLength);
                             instance.setServingTimeAvg(totalServing / statLength);
-                            LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
-                            LOG.info("average queuing time: " + dFormat.format(instance.getQueuingTimeAvg()) + "; average serving time: " + dFormat.format((totalServing / statLength)) + "; current queue length: " + currentQueueLength);
+                            //LOG.info("service " + serviceType + " running on " + instance.getHostPort().getPort() + " with " + servingLatencyStatistic.size() + " finished queries" + ":");
+                            // LOG.info("average queuing time: " + dFormat.format(instance.getQueuingTimeAvg()) + "; average serving time: " + dFormat.format((totalServing / statLength)) + "; current queue length: " + currentQueueLength);
+                            LOG.info("average queuing time: " + dFormat.format(instance.getQueuingTimeAvg()) + "; average serving time: " + dFormat.format((totalServing / statLength)));
                         } else {
                             instance.setQueuingTimeAvg(0);
                             instance.setCurrentQueueLength(0);
@@ -956,10 +957,10 @@ public class CommandCenter implements SchedulerService.Iface {
             double speedup = 0;
 
             double stageQoSTarget = QoSTarget;
-            LOG.info("predict the boosting decision");
-            LOG.info("the frequency of the slowest instance is " + instance.getCurrentFrequncy());
+            // LOG.info("predict the boosting decision");
+            // LOG.info("the frequency of the slowest instance is " + instance.getCurrentFrequncy());
             int originIndex = freqRangeList.indexOf(instance.getCurrentFrequncy());
-            LOG.info("the frequency index is " + originIndex);
+            // LOG.info("the frequency index is " + originIndex);
             // already reach the max frequency, launch a new instance
             if (originIndex == freqRangeList.size() - 1) {
                 decision.setDecision(BoostDecision.INSTANCE_BOOST);
