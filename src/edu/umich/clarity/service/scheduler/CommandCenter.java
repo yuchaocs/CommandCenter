@@ -661,8 +661,8 @@ public class CommandCenter implements SchedulerService.Iface {
 
             // shutdown the service instance and relinquish the gobal power budget
             String appName = instance.getServiceType();
-            LOG.info("withdrawing the service instance type " + instance.getServiceType());
-            LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
+            // LOG.info("withdrawing the service instance type " + instance.getServiceType());
+            // LOG.info("withdrawing the service instance running on " + instance.getHostPort().getIp() + ":" + instance.getHostPort().getPort());
             List<ServiceInstance> serviceInstanceList = serviceMap.get(instance.getServiceType());
             // double allocatedFreq = instance.getCurrentFrequncy();
             serviceInstanceList.remove(instance);
