@@ -882,7 +882,7 @@ public class CommandCenter implements SchedulerService.Iface {
 
             LOG.info("measured latency QoS is " + dFormat.format(measuredLatency) + ", instantaneous latency QoS is " + instLatency + " and the stable range is " + ADJUST_THRESHOLD * QoSTarget + " <= Measured QoS <= " + QoSTarget);
             // 1. QoS is violated, applying service boosting techniques
-            ServiceInstance slowestInstance = serviceInstanceList.get(0);
+            ServiceInstance slowestInstance = identifySlowInstance(serviceInstanceList);
             if (Double.compare(measuredLatency, QoSTarget) > 0) {
                 LOG.info("the average QoS is violated, increase the power consumption of the slowest stage");
                 serviceBoosting(slowestInstance, true, true);
@@ -904,7 +904,7 @@ public class CommandCenter implements SchedulerService.Iface {
                 }
                 // LOG.info("sorting the instances for instantaneous latency for size " + instantServiceInstanceList.size());
                 Collections.sort(instantServiceInstanceList, new LatencyComparator("instantaneous"));
-                slowestInstance = instantServiceInstanceList.get(0);
+                slowestInstance = identifySlowInstance(instantServiceInstanceList);
                 LOG.info("slowest instantaneous instance for is " + slowestInstance.getHostPort().getPort());
                 if (Double.compare(instLatency, 1.35 * QoSTarget) > 0) {
                     LOG.info("the instantaneous QoS is violated, aggressively increase the power consumption of the slowest stage");
@@ -955,6 +955,26 @@ public class CommandCenter implements SchedulerService.Iface {
             }
         }
 
+        private ServiceInstance identifySlowInstance(List<ServiceInstance> serviceInstanceList){
+            ServiceInstance instance = null;
+            for(int i = 0; i < serviceInstanceList.size(); i++){
+                ServiceInstance tempInstance = serviceInstanceList.get(i);
+                String serviceType = tempInstance.getServiceType();
+                if(candidateMap.get(serviceType) != null && candidateMap.get(serviceType).size() != 0){
+                    instance = tempInstance;
+                    break;
+                }else{
+                    if(freqRangeList.indexOf(tempInstance.getCurrentFrequncy()) != (freqRangeList.size() - 1)){
+                        instance = tempInstance;
+                        break;
+                    }
+                }
+            }
+            if(instance == null){
+                instance = serviceInstanceList.get(0);
+            }
+            return instance;
+        }
         /**
          * Compare the boosting decisions and choose the one that satisfies QoS target while consumes least power.
          *
