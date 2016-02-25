@@ -78,7 +78,6 @@ public class NutchStressClient {
      * @param args args[0]: scheduler_ip, args[1]: scheduler_port, args[2]: distribution_file, args[3]: query_num, args[4]: warm_up_query
      */
     public static void main(String[] args) {
-        /*
         if (args.length == 11) {
             SCHEDULER_IP = args[0];
             SCHEDULER_PORT = Integer.valueOf(args[1]);
@@ -92,12 +91,11 @@ public class NutchStressClient {
             BURST_SWITCH_NUM = Integer.valueOf(args[9]);
             BURST_RATIO = Float.valueOf(args[10]);
         }
-        */
 
         NutchStressClient client = new NutchStressClient();
         if (OPERATION.equalsIgnoreCase("load")) {
-            // LOG.info("start to warm up the services...");
-            System.out.println("start to warm up the services...");
+            LOG.info("start to warm up the services...");
+            // System.out.println("start to warm up the services...");
             client.warmupNutch();
             SchedulerService.Client schedulerClient = null;
             try {
@@ -116,8 +114,8 @@ public class NutchStressClient {
             } catch (TException ex) {
 
             }
-            // LOG.info("start to evaluate the latency with " + loadType + " distribution");
-            System.out.println("start to evaluate the latency with " + loadType + " distribution");
+            LOG.info("start to evaluate the latency with " + loadType + " distribution");
+            // System.out.println("start to evaluate the latency with " + loadType + " distribution");
             if (loadType.equalsIgnoreCase(NutchStressClient.LOAD_TYPE_BURST)) {
                 client.genBurstLoad(num_client);
             } else if (loadType.equalsIgnoreCase(NutchStressClient.LOAD_TYPE_POISSON)) {
@@ -206,7 +204,7 @@ public class NutchStressClient {
     public void warmupNutch() {
         String search_term = null;
         try {
-            FileReader fileReader = new FileReader(SEARCH_TERM_FILE);
+            FileReader fileReader = new FileReader(System.getProperty("user.dir") + File.separator + SEARCH_TERM_FILE);
             BufferedReader bufferedReader = new BufferedReader(fileReader);
             int counter = 0;
             while ((search_term = bufferedReader.readLine()) != null && counter < WARMUP_COUNT) {
@@ -251,7 +249,7 @@ public class NutchStressClient {
                 HttpTransport http = HttpTransport.newInstance();
                 http.fetchURL(url);
                 LOG.info("Sending query " + i + " and sleep for " + Integer.valueOf(sample[i]) + " ms");
-                System.out.println("Sending query " + i + " and sleep for " + Integer.valueOf(sample[i]) + " ms");
+                //System.out.println("Sending query " + i + " and sleep for " + Integer.valueOf(sample[i]) + " ms");
                 Thread.sleep(Integer.valueOf(sample[i]));
             } catch (InterruptedException e) {
                 e.printStackTrace();
