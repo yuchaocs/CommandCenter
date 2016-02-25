@@ -18,6 +18,9 @@
 	<pathelement location="lib/servlet-api-2.5.jar"/>
 	<pathelement location="lib/slf4j-api-1.5.8.jar"/>
 	<pathelement location="lib/slf4j-log4j12-1.5.8.jar"/>
+	<pathelement location="lib/fabanagents.jar"/>
+	<pathelement location="lib/fabancommon.jar"/>
+	<pathelement location="lib/fabandriver.jar"/>
     </path>
     <target depends="clean" name="init">
         <mkdir dir="bin"/>
@@ -49,7 +52,7 @@
 	<jar destfile="stressclient.jar" basedir="${basedir}/bin">
 	<zipgroupfileset dir="lib" includes="*.jar" />
 	<manifest>
-		<attribute name="Main-Class" value="edu.umich.clarity.service.StressClient"/>
+		<attribute name="Main-Class" value="edu.umich.clarity.service.NutchStressClient"/>
 	</manifest>
 	</jar>
     </target>
